@@ -30,3 +30,26 @@ export async function getMe(token) {
   if (!res.ok) throw new Error(data.detail || "Not authenticated");
   return data;
 }
+  
+export async function createExpense(token, expense) {
+  const res = await fetch(`${API_URL}/expenses`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(expense),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to create expense");
+  return data;
+}
+
+export async function getExpenses(token) {
+  const res = await fetch(`${API_URL}/expenses`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to fetch expenses");
+  return data;
+}
