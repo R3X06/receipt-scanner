@@ -3,6 +3,7 @@ import { useAuth } from "./AuthContext";
 import { getExpenses } from "./api";
 import ExpenseForm from "./ExpenseForm";
 import ReceiptUpload from "./ReceiptUpload";
+import Charts from "./Charts";
 
 export default function Dashboard() {
   const { user, token, logout } = useAuth();
@@ -67,6 +68,7 @@ export default function Dashboard() {
           <p style={{ fontSize: "13px", opacity: 0.8, marginTop: "4px" }}>{expenses.length} expenses</p>
         </div>
 
+        <Charts expenses={expenses} />
         <ReceiptUpload onExpenseAdded={handleExpenseAdded} />
         <ExpenseForm onExpenseAdded={handleExpenseAdded} />
 
@@ -93,7 +95,7 @@ export default function Dashboard() {
                   <p style={{ fontWeight: "500", marginBottom: "2px" }}>{e.merchant}</p>
                   <p style={{ fontSize: "13px", color: "#888" }}>{e.category} · {e.date}</p>
                 </div>
-                <p style={{ fontWeight: "600", color: "#4f46e5" }}>${e.amount.toFixed(2)}</p>
+                <p style={{ fontWeight: "600", color: "#4f46e5" }}>{e.currency || "USD"} {e.amount.toFixed(2)}</p>
               </div>
             ))
           )}

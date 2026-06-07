@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -6,8 +6,7 @@ from typing import Optional
 from database import engine, get_db, Base
 import models
 import auth
-from datetime import date
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+import ocr
 
 Base.metadata.create_all(bind=engine)
 
@@ -28,6 +27,13 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str
+
+class ExpenseRequest(BaseModel):
+    amount: float
+    merchant: str
+    date: str
+    category: Optional[str] = "Uncategorized"
+    currency: Optional[str] = "USD"
 
 @app.get("/health")
 def health():
@@ -60,12 +66,6 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
 def me(current_user: models.User = Depends(auth.get_current_user)):
     return {"id": current_user.id, "email": current_user.email}
 
-class ExpenseRequest(BaseModel):
-    amount: float
-    merchant: str
-    date: str
-    category: Optional[str] = "Uncategorized"
-
 @app.post("/expenses")
 def create_expense(
     body: ExpenseRequest,
@@ -78,6 +78,7 @@ def create_expense(
         merchant=body.merchant,
         date=body.date,
         category=body.category,
+        currency=body.currency,
         parsed_ok=True
     )
     db.add(expense)
@@ -95,8 +96,6 @@ def get_expenses(
     ).order_by(models.Expense.created_at.desc()).all()
     return expenses
 
-import ocr
-
 @app.post("/ocr")
 async def scan_receipt(
     file: UploadFile = File(...),
@@ -113,6 +112,7 @@ async def scan_receipt(
         merchant=parsed["merchant"],
         date=parsed["date"],
         category="Uncategorized",
+        currency=parsed["currency"],
         raw_ocr_text=raw_text,
         parsed_ok=parsed["parsed_ok"]
     )

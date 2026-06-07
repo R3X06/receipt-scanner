@@ -6,6 +6,7 @@ export default function ReceiptUpload({ onExpenseAdded }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
+  const [inputKey, setInputKey] = useState(0);
 
   async function handleUpload(e) {
     const file = e.target.files[0];
@@ -29,6 +30,7 @@ export default function ReceiptUpload({ onExpenseAdded }) {
       if (!res.ok) throw new Error(data.detail || "OCR failed");
 
       setResult(data);
+      setInputKey(prev => prev + 1);
       onExpenseAdded(data.expense);
     } catch (err) {
       setError(err.message);
@@ -62,6 +64,7 @@ export default function ReceiptUpload({ onExpenseAdded }) {
       }}>
         {loading ? "Scanning..." : "📷 Click to upload receipt"}
         <input
+          key={inputKey}
           type="file"
           accept="image/*"
           onChange={handleUpload}

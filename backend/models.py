@@ -27,6 +27,7 @@ class Expense(Base):
     merchant = Column(String, default="Unknown")
     date = Column(String)
     category = Column(String, default="Uncategorized")
+    currency = Column(String, default="USD")
     raw_ocr_text = Column(TEXT, default="")
     parsed_ok = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
