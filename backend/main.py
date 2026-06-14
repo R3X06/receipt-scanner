@@ -7,6 +7,7 @@ from database import engine, get_db, Base
 import models
 import auth
 import ocr
+import fx
 
 Base.metadata.create_all(bind=engine)
 
@@ -20,24 +21,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class SignupRequest(BaseModel):
     email: str
     password: str
 
+
 class LoginRequest(BaseModel):
     email: str
     password: str
+
 
 class ExpenseRequest(BaseModel):
     amount: float
     merchant: str
     date: str
     category: Optional[str] = "Uncategorized"
-    currency: Optional[str] = "USD"
+    currency: Optional[str] = "SGD"
+    raw_ocr_text: Optional[str] = ""
+    parsed_ok: Optional[bool] = True
+
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 @app.post("/auth/signup")
 def signup(body: SignupRequest, db: Session = Depends(get_db)):
@@ -54,6 +62,7 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)):
     token = auth.create_token({"sub": user.email})
     return {"access_token": token, "token_type": "bearer"}
 
+
 @app.post("/auth/login")
 def login(body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == body.email).first()
@@ -62,9 +71,15 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     token = auth.create_token({"sub": user.email})
     return {"access_token": token, "token_type": "bearer"}
 
+
 @app.get("/auth/me")
 def me(current_user: models.User = Depends(auth.get_current_user)):
-    return {"id": current_user.id, "email": current_user.email}
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "primary_currency": current_user.primary_currency or "SGD",
+    }
+
 
 @app.post("/expenses")
 def create_expense(
@@ -72,6 +87,14 @@ def create_expense(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
+    base_currency = current_user.primary_currency or fx.DEFAULT_BASE_CURRENCY
+    conversion = fx.convert_to_base(
+        amount=body.amount,
+        currency=body.currency,
+        base_currency=base_currency,
+        receipt_date_str=body.date,
+    )
+
     expense = models.Expense(
         user_id=current_user.id,
         amount=body.amount,
@@ -79,48 +102,56 @@ def create_expense(
         date=body.date,
         category=body.category,
         currency=body.currency,
-        parsed_ok=True
+        amount_base=conversion["amount_base"],
+        base_currency=conversion["base_currency"],
+        fx_rate=conversion["fx_rate"],
+        fx_date=conversion["fx_date"],
+        raw_ocr_text=body.raw_ocr_text,
+        parsed_ok=body.parsed_ok
     )
     db.add(expense)
     db.commit()
     db.refresh(expense)
     return expense
 
+
 @app.get("/expenses")
 def get_expenses(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    category: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    expenses = db.query(models.Expense).filter(
+    query = db.query(models.Expense).filter(
         models.Expense.user_id == current_user.id
-    ).order_by(models.Expense.created_at.desc()).all()
+    )
+    if category:
+        query = query.filter(models.Expense.category == category)
+    if start_date:
+        query = query.filter(models.Expense.fx_date >= start_date)
+    if end_date:
+        query = query.filter(models.Expense.fx_date <= end_date)
+
+    expenses = query.order_by(models.Expense.created_at.desc()).all()
     return expenses
+
 
 @app.post("/ocr")
 async def scan_receipt(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
     contents = await file.read()
     raw_text = ocr.extract_text_from_image(contents)
     parsed = ocr.parse_receipt(raw_text)
 
-    expense = models.Expense(
-        user_id=current_user.id,
-        amount=parsed["amount"],
-        merchant=parsed["merchant"],
-        date=parsed["date"],
-        category="Uncategorized",
-        currency=parsed["currency"],
-        raw_ocr_text=raw_text,
-        parsed_ok=parsed["parsed_ok"]
-    )
-    db.add(expense)
-    db.commit()
-    db.refresh(expense)
     return {
-        "expense": expense,
-        "raw_text": raw_text,
-        "parsed_ok": parsed["parsed_ok"]
+        "merchant": parsed["merchant"],
+        "amount": parsed["amount"],
+        "date": parsed["date"],
+        "category": "Uncategorized",
+        "currency": parsed["currency"],
+        "raw_ocr_text": raw_text,
+        "parsed_ok": parsed["parsed_ok"],
     }

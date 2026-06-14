@@ -1,23 +1,23 @@
 import { useState } from "react";
 import { createExpense } from "./api";
 import { useAuth } from "./AuthContext";
+import { CATEGORIES, CURRENCIES } from "./constants";
 
-const CATEGORIES = [
-  "Food & Drink",
-  "Transport",
-  "Shopping",
-  "Health",
-  "Entertainment",
-  "Utilities",
-  "Other",
-];
+const selectStyle = {
+  padding: "10px 14px",
+  border: "1px solid #ddd",
+  borderRadius: "8px",
+  fontSize: "15px",
+  background: "white",
+};
 
 export default function ExpenseForm({ onExpenseAdded }) {
   const { token } = useAuth();
   const [amount, setAmount] = useState("");
   const [merchant, setMerchant] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [category, setCategory] = useState("Food & Drink");
+  const [category, setCategory] = useState("Other");
+  const [currency, setCurrency] = useState("SGD");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -31,11 +31,13 @@ export default function ExpenseForm({ onExpenseAdded }) {
         merchant,
         date,
         category,
+        currency,
       });
       onExpenseAdded(expense);
       setAmount("");
       setMerchant("");
       setDate(new Date().toISOString().split("T")[0]);
+      // category and currency intentionally kept for the next entry
     } catch (err) {
       setError(err.message);
     } finally {
@@ -63,6 +65,15 @@ export default function ExpenseForm({ onExpenseAdded }) {
             min="0"
             required
           />
+          <select
+            value={currency}
+            onChange={e => setCurrency(e.target.value)}
+            style={selectStyle}
+          >
+            {CURRENCIES.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
           <input
             type="text"
             placeholder="Merchant"
@@ -79,13 +90,7 @@ export default function ExpenseForm({ onExpenseAdded }) {
           <select
             value={category}
             onChange={e => setCategory(e.target.value)}
-            style={{
-              padding: "10px 14px",
-              border: "1px solid #ddd",
-              borderRadius: "8px",
-              fontSize: "15px",
-              background: "white",
-            }}
+            style={{ ...selectStyle, gridColumn: "1 / -1" }}
           >
             {CATEGORIES.map(c => (
               <option key={c} value={c}>{c}</option>

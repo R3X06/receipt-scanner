@@ -30,7 +30,7 @@ export async function getMe(token) {
   if (!res.ok) throw new Error(data.detail || "Not authenticated");
   return data;
 }
-  
+
 export async function createExpense(token, expense) {
   const res = await fetch(`${API_URL}/expenses`, {
     method: "POST",
@@ -45,8 +45,14 @@ export async function createExpense(token, expense) {
   return data;
 }
 
-export async function getExpenses(token) {
-  const res = await fetch(`${API_URL}/expenses`, {
+export async function getExpenses(token, filters = {}) {
+  const params = new URLSearchParams();
+  if (filters.start) params.append("start_date", filters.start);
+  if (filters.end) params.append("end_date", filters.end);
+  if (filters.category) params.append("category", filters.category);
+  const qs = params.toString();
+
+  const res = await fetch(`${API_URL}/expenses${qs ? `?${qs}` : ""}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await res.json();

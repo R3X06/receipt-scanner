@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { login, signup } from "./api";
 import { useAuth } from "./AuthContext";
+import { CURRENCIES } from "./constants";
 
 export default function Login() {
   const { saveToken } = useAuth();
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [currency, setCurrency] = useState("SGD");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -16,7 +18,7 @@ export default function Login() {
     setLoading(true);
     try {
       const data = isSignup
-        ? await signup(email, password)
+        ? await signup(email, password, currency)
         : await login(email, password);
       saveToken(data.access_token);
     } catch (err) {
@@ -58,7 +60,7 @@ export default function Login() {
               required
             />
           </div>
-          <div style={{ marginBottom: "16px" }}>
+          <div style={{ marginBottom: isSignup ? "12px" : "16px" }}>
             <input
               type="password"
               placeholder="Password"
@@ -67,6 +69,35 @@ export default function Login() {
               required
             />
           </div>
+
+          {isSignup && (
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ display: "block", fontSize: "12px", color: "#888", marginBottom: "4px" }}>
+                Primary currency
+              </label>
+              <select
+                value={currency}
+                onChange={e => setCurrency(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  border: "1px solid #ddd",
+                  borderRadius: "8px",
+                  fontSize: "15px",
+                  background: "white",
+                  boxSizing: "border-box",
+                }}
+              >
+                {CURRENCIES.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <p style={{ fontSize: "12px", color: "#aaa", marginTop: "4px" }}>
+                Your charts will show totals converted into this currency.
+              </p>
+            </div>
+          )}
+
           {error && <p className="error">{error}</p>}
           <button type="submit" disabled={loading} style={{ marginTop: "8px" }}>
             {loading ? "Please wait..." : isSignup ? "Create account" : "Sign in"}
