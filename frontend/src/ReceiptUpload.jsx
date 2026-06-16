@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useAuth } from "./AuthContext";
-import { createExpense } from "./api";
+import { createExpense, suggestCategory } from "./api";
 import { CATEGORIES, CURRENCIES } from "./constants";
+
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -54,11 +55,23 @@ export default function ReceiptUpload({ onExpenseAdded }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "OCR failed");
 
+      // Ask the AI to suggest a category from the merchant + scanned text.
+      let category = CATEGORIES.includes(data.category) ? data.category : "Other";
+      try {
+        const sug = await suggestCategory(token, {
+          merchant: data.merchant,
+          raw_text: data.raw_ocr_text,
+        });
+        if (sug?.category && CATEGORIES.includes(sug.category)) category = sug.category;
+      } catch {
+        // best-effort — keep the fallback category
+      }
+
       setDraft({
         merchant: data.merchant === "Unknown" ? "" : data.merchant || "",
         amount: data.amount ? String(data.amount) : "",
         date: data.date || "",
-        category: CATEGORIES.includes(data.category) ? data.category : "Other",
+        category,
         currency: CURRENCIES.includes(data.currency) ? data.currency : "USD",
         raw_ocr_text: data.raw_ocr_text || "",
         parsed_ok: data.parsed_ok,
@@ -67,7 +80,7 @@ export default function ReceiptUpload({ onExpenseAdded }) {
       setError(err.message);
     } finally {
       setLoading(false);
-      setInputKey((prev) => prev + 1); // always reset so the same file can be retried
+      setInputKey((prev) => prev + 1);
     }
   }
 

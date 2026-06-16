@@ -5,6 +5,8 @@ import { CATEGORIES } from "./constants";
 import ExpenseForm from "./ExpenseForm";
 import ReceiptUpload from "./ReceiptUpload";
 import Charts from "./Charts";
+import AskAI from "./AskAI";
+import Insights from "./Insights";
 
 const fInput = {
   width: "100%",
@@ -171,6 +173,8 @@ export default function Dashboard() {
         </div>
 
         <Charts expenses={expenses} baseCurrency={baseCurrency} />
+        <AskAI />
+        <Insights />
         <ReceiptUpload onExpenseAdded={handleExpenseAdded} />
         <ExpenseForm onExpenseAdded={handleExpenseAdded} />
 

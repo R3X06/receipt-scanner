@@ -59,3 +59,41 @@ export async function getExpenses(token, filters = {}) {
   if (!res.ok) throw new Error(data.detail || "Failed to fetch expenses");
   return data;
 }
+
+export async function askAI(token, question) {
+  const res = await fetch(`${API_URL}/ai/ask`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ question }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "AI request failed");
+  return data;
+}
+
+export async function getInsights(token) {
+  const res = await fetch(`${API_URL}/ai/insights`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "AI request failed");
+  return data;
+}
+
+export async function suggestCategory(token, payload) {
+  const res = await fetch(`${API_URL}/ai/categorize`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "AI request failed");
+  return data;
+}

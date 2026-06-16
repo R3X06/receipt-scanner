@@ -8,6 +8,7 @@ import models
 import auth
 import ocr
 import fx
+import ai
 
 Base.metadata.create_all(bind=engine)
 
@@ -40,6 +41,9 @@ class ExpenseRequest(BaseModel):
     currency: Optional[str] = "SGD"
     raw_ocr_text: Optional[str] = ""
     parsed_ok: Optional[bool] = True
+
+class AskRequest(BaseModel):
+    question: str
 
 
 @app.get("/health")
@@ -155,3 +159,59 @@ async def scan_receipt(
         "raw_ocr_text": raw_text,
         "parsed_ok": parsed["parsed_ok"],
     }
+
+@app.post("/ai/ask")
+def ai_ask(
+    body: AskRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    if not body.question or not body.question.strip():
+        raise HTTPException(status_code=400, detail="Please enter a question.")
+
+    expenses = db.query(models.Expense).filter(
+        models.Expense.user_id == current_user.id
+    ).order_by(models.Expense.created_at.desc()).all()
+
+    base_currency = current_user.primary_currency or "SGD"
+    try:
+        answer = ai.answer_question(body.question.strip(), expenses, base_currency)
+    except Exception as exc:
+        print(f"AI ask failed: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="The AI service is unavailable. Check your OpenAI key and credit, then try again."
+        )
+    return {"answer": answer}
+
+@app.post("/ai/insights")
+def ai_insights(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    expenses = db.query(models.Expense).filter(
+        models.Expense.user_id == current_user.id
+    ).order_by(models.Expense.created_at.desc()).all()
+
+    base_currency = current_user.primary_currency or "SGD"
+    try:
+        insights = ai.generate_insights(expenses, base_currency)
+    except Exception as exc:
+        print(f"AI insights failed: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="The AI service is unavailable. Check your OpenAI key and credit, then try again."
+        )
+    return {"insights": insights}
+
+class CategorizeRequest(BaseModel):
+    merchant: Optional[str] = ""
+    raw_text: Optional[str] = ""
+
+
+@app.post("/ai/categorize")
+def ai_categorize(
+    body: CategorizeRequest,
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    return {"category": ai.suggest_category(body.merchant, body.raw_text)}
