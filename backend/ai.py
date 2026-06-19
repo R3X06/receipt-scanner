@@ -170,3 +170,52 @@ def suggest_category(merchant, raw_text):
         if guess.lower() == c.lower():
             return c
     return "Other"
+
+EXTRACT_MODEL = "gpt-4.1-mini"  # a step up from nano for recognising real brands
+
+EXTRACT_SYSTEM = (
+    "You extract fields from the raw OCR text of a receipt. Return ONLY a JSON "
+    "object with keys 'merchant' and 'category'.\n\n"
+    "'merchant' = the specific business, brand, store, or restaurant that sold the "
+    "goods (the seller's trading name). Rules:\n"
+    "- NEVER return the shopping mall, shopping centre, building, plaza, or location "
+    "name. The mall is only WHERE the merchant sits, not the merchant.\n"
+    "- For 'BRAND <Mall>' or 'BRAND @ Mall', return just the BRAND.\n"
+    "- Expand a well-known brand abbreviation when you're confident "
+    "(e.g. 'GV' -> 'Golden Village').\n"
+    "- IGNORE banks, card networks, and payment processors (UOB, DBS, OCBC, VISA, "
+    "Mastercard, NETS, GrabPay) — never the merchant.\n"
+    "- If you genuinely can't identify the seller, use an empty string.\n"
+    "Examples: 'GV Vivocity' -> 'Golden Village'; 'Starbucks Marina Bay Sands' -> "
+    "'Starbucks'; 'Uniqlo Bugis Junction' -> 'Uniqlo'.\n\n"
+    "'category' = exactly one of: {categories}. If unsure, use 'Other'.\n\n"
+    "Return only the JSON object."
+)
+
+
+def extract_fields(raw_text):
+    snippet = (raw_text or "").strip()[:2000]
+    if not snippet:
+        return {"merchant": "", "category": "Other"}
+    try:
+        resp = _get_client().chat.completions.create(
+            model=EXTRACT_MODEL,
+            temperature=0,
+            max_tokens=80,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": EXTRACT_SYSTEM.format(categories=", ".join(CATEGORIES))},
+                {"role": "user", "content": snippet},
+            ],
+        )
+        content = resp.choices[0].message.content.strip()
+        content = content.replace("```json", "").replace("```", "").strip()
+        data = json.loads(content)
+        merchant = (data.get("merchant") or "").strip()
+        category = data.get("category", "Other")
+        if category not in CATEGORIES:
+            category = "Other"
+        return {"merchant": merchant, "category": category}
+    except Exception as exc:
+        print(f"AI extract failed: {exc}")
+        return {"merchant": "", "category": "Other"}

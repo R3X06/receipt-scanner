@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useAuth } from "./AuthContext";
-import { createExpense, suggestCategory } from "./api";
+//import { createExpense, suggestCategory } from "./api";
 import { CATEGORIES, CURRENCIES } from "./constants";
+import { createExpense, extractFields } from "./api";
 
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -55,20 +56,21 @@ export default function ReceiptUpload({ onExpenseAdded }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "OCR failed");
 
-      // Ask the AI to suggest a category from the merchant + scanned text.
+      // OCR fallbacks
+      let merchant = data.merchant === "Unknown" ? "" : (data.merchant || "");
       let category = CATEGORIES.includes(data.category) ? data.category : "Other";
+
+      // Ask the AI to pull the real merchant + category from the scanned text.
       try {
-        const sug = await suggestCategory(token, {
-          merchant: data.merchant,
-          raw_text: data.raw_ocr_text,
-        });
-        if (sug?.category && CATEGORIES.includes(sug.category)) category = sug.category;
+        const ex = await extractFields(token, { raw_text: data.raw_ocr_text });
+        if (ex?.merchant) merchant = ex.merchant;
+        if (ex?.category && CATEGORIES.includes(ex.category)) category = ex.category;
       } catch {
-        // best-effort — keep the fallback category
+        // best-effort — keep the OCR fallbacks
       }
 
       setDraft({
-        merchant: data.merchant === "Unknown" ? "" : data.merchant || "",
+        merchant,
         amount: data.amount ? String(data.amount) : "",
         date: data.date || "",
         category,

@@ -215,3 +215,15 @@ def ai_categorize(
     current_user: models.User = Depends(auth.get_current_user)
 ):
     return {"category": ai.suggest_category(body.merchant, body.raw_text)}
+
+class ExtractRequest(BaseModel):
+    raw_text: Optional[str] = ""
+
+
+@app.post("/ai/extract")
+def ai_extract(
+    body: ExtractRequest,
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    return ai.extract_fields(body.raw_text)
+

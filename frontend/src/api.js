@@ -97,3 +97,17 @@ export async function suggestCategory(token, payload) {
   if (!res.ok) throw new Error(data.detail || "AI request failed");
   return data;
 }
+
+export async function extractFields(token, payload) {
+  const res = await fetch(`${API_URL}/ai/extract`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "AI request failed");
+  return data;
+}

@@ -6,19 +6,19 @@ import re
 GOOGLE_VISION_API_KEY = os.getenv("GOOGLE_VISION_API_KEY")
 
 CURRENCY_PATTERNS = [
-    (r'MYR|RM', 'MYR'),
-    (r'SGD|S\$', 'SGD'),
-    (r'GBP|£', 'GBP'),
-    (r'EUR|€', 'EUR'),
-    (r'AUD|A\$', 'AUD'),
-    (r'JPY|¥', 'JPY'),
-    (r'INR|₹', 'INR'),
-    (r'USD|\$', 'USD'),
+    (r'\bMYR\b|RM\s*\d', 'MYR'),
+    (r'\bSGD\b|S\$', 'SGD'),
+    (r'\bGBP\b|£', 'GBP'),
+    (r'\bEUR\b|€', 'EUR'),
+    (r'\bAUD\b|A\$', 'AUD'),
+    (r'\bJPY\b|¥', 'JPY'),
+    (r'\bINR\b|₹|\bRs\.?\s*\d', 'INR'),
+    (r'\bUSD\b|US\$|\$\s*\d', 'USD'),
 ]
 
 def detect_currency(text: str) -> str:
     for pattern, currency in CURRENCY_PATTERNS:
-        if re.search(pattern, text, re.IGNORECASE):
+        if re.search(pattern, text):
             return currency
     return "USD"
 
