@@ -16,11 +16,11 @@ CURRENCY_PATTERNS = [
     (r'\bUSD\b|US\$|\$\s*\d', 'USD'),
 ]
 
-def detect_currency(text: str) -> str:
+def detect_currency(text: str, default: str = "USD") -> str:
     for pattern, currency in CURRENCY_PATTERNS:
         if re.search(pattern, text):
             return currency
-    return "SGD"
+    return default
 
 def extract_text_from_image(image_bytes: bytes) -> str:
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
@@ -40,7 +40,7 @@ def extract_text_from_image(image_bytes: bytes) -> str:
         print("VISION RESPONSE:", data)
         return ""
 
-def parse_receipt(text: str) -> dict:
+def parse_receipt(text: str, base_currency: str = "USD") -> dict:
     amount = None
     date = None
     merchant = None
@@ -98,6 +98,6 @@ def parse_receipt(text: str) -> dict:
         "merchant": merchant or "Unknown",
         "amount": amount or 0.0,
         "date": date or "",
-        "currency": detect_currency(text),
+        "currency": detect_currency(text, default=base_currency),
         "parsed_ok": amount is not None
     }
