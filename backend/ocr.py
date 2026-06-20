@@ -20,7 +20,7 @@ def detect_currency(text: str) -> str:
     for pattern, currency in CURRENCY_PATTERNS:
         if re.search(pattern, text):
             return currency
-    return "USD"
+    return "SGD"
 
 def extract_text_from_image(image_bytes: bytes) -> str:
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
