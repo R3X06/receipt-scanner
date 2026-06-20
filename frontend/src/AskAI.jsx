@@ -2,6 +2,12 @@ import { useState } from "react";
 import { useAuth } from "./AuthContext";
 import { askAI } from "./api";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
+
+const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
+
 const EXAMPLES = [
   "How much did I spend last month?",
   "What's my biggest category?",
@@ -37,74 +43,49 @@ export default function AskAI() {
   }
 
   return (
-    <div style={{
-      background: "white",
-      borderRadius: "12px",
-      padding: "1.5rem",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-      marginBottom: "1.5rem",
-    }}>
-      <h2 style={{ fontSize: "16px", marginBottom: "0.25rem" }}>Ask about your spending</h2>
-      <p style={{ fontSize: "13px", color: "#888", marginBottom: "1rem" }}>
-        Ask a question in plain English and get an answer from your data.
-      </p>
-
-      <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-        <input
-          type="text"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder="e.g. How much did I spend on transport this month?"
-          style={{
-            flex: 1,
-            padding: "10px 14px",
-            border: "1px solid #ddd",
-            borderRadius: "8px",
-            fontSize: "15px",
-            boxSizing: "border-box",
-          }}
-        />
-        <button onClick={() => ask()} disabled={loading} style={{ width: "auto", padding: "10px 18px" }}>
-          {loading ? "Thinking..." : "Ask"}
-        </button>
-      </div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: (answer || error) ? "12px" : 0 }}>
-        {EXAMPLES.map((ex) => (
-          <button
-            key={ex}
-            onClick={() => ask(ex)}
-            disabled={loading}
-            style={{
-              width: "auto",
-              padding: "5px 10px",
-              fontSize: "12px",
-              background: "#f3f4f6",
-              color: "#4f46e5",
-              border: "1px solid #e5e7eb",
-            }}
-          >
-            {ex}
-          </button>
-        ))}
-      </div>
-
-      {error && <p className="error">{error}</p>}
-
-      {answer && (
-        <div style={{
-          background: "#f9fafb",
-          border: "1px solid #eee",
-          borderRadius: "8px",
-          padding: "12px 14px",
-          fontSize: "14px",
-          lineHeight: 1.5,
-          whiteSpace: "pre-wrap",
-        }}>
-          {answer}
+    <Card className={`${GLASS} rounded-2xl`}>
+      <CardContent className="space-y-3">
+        <div>
+          <h2 className="text-base font-medium">Ask about your spending</h2>
+          <p className="text-sm text-muted-foreground">
+            Ask a question in plain English and get an answer from your data.
+          </p>
         </div>
-      )}
-    </div>
+
+        <div className="flex gap-2">
+          <Input
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="e.g. How much did I spend on transport this month?"
+          />
+          <Button onClick={() => ask()} disabled={loading} className="font-medium">
+            {loading ? "Thinking..." : "Ask"}
+          </Button>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {EXAMPLES.map((ex) => (
+            <button
+              key={ex}
+              type="button"
+              onClick={() => ask(ex)}
+              disabled={loading}
+              className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50"
+            >
+              {ex}
+            </button>
+          ))}
+        </div>
+
+        {error && <p className="text-sm text-destructive">{error}</p>}
+
+        {answer && (
+          <div className="whitespace-pre-wrap rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm leading-relaxed">
+            {answer}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

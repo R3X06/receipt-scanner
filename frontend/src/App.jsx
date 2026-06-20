@@ -19,7 +19,11 @@ function AppContent() {
     );
   }
 
-  return user ? <Dashboard /> : <Login />;
+  return (
+    <>
+      {user ? <Dashboard /> : <Login />}
+    </>
+  );
 }
 
 export default function App() {

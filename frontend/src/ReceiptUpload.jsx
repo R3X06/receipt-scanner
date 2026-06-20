@@ -1,28 +1,23 @@
 import { useState } from "react";
 import { useAuth } from "./AuthContext";
-//import { createExpense, suggestCategory } from "./api";
 import { CATEGORIES, CURRENCIES } from "./constants";
 import { createExpense, extractFields } from "./api";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Upload, CheckCircle2, AlertTriangle } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
-
-const inputStyle = {
-  width: "100%",
-  padding: "10px 14px",
-  border: "1px solid #ddd",
-  borderRadius: "8px",
-  fontSize: "15px",
-  background: "white",
-  boxSizing: "border-box",
-};
-
-const labelStyle = {
-  display: "block",
-  fontSize: "12px",
-  color: "#888",
-  marginBottom: "4px",
-};
+const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 
 export default function ReceiptUpload({ onExpenseAdded }) {
   const { token } = useAuth();
@@ -56,11 +51,9 @@ export default function ReceiptUpload({ onExpenseAdded }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "OCR failed");
 
-      // OCR fallbacks
-      let merchant = data.merchant === "Unknown" ? "" : (data.merchant || "");
+      let merchant = data.merchant === "Unknown" ? "" : data.merchant || "";
       let category = CATEGORIES.includes(data.category) ? data.category : "Other";
 
-      // Ask the AI to pull the real merchant + category from the scanned text.
       try {
         const ex = await extractFields(token, { raw_text: data.raw_ocr_text });
         if (ex?.merchant) merchant = ex.merchant;
@@ -130,205 +123,145 @@ export default function ReceiptUpload({ onExpenseAdded }) {
   }
 
   return (
-    <div
-      style={{
-        background: "white",
-        borderRadius: "12px",
-        padding: "1.5rem",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-        marginBottom: "1.5rem",
-      }}
-    >
-      <h2 style={{ fontSize: "16px", marginBottom: "0.5rem" }}>Scan a receipt</h2>
-      <p style={{ fontSize: "13px", color: "#888", marginBottom: "1rem" }}>
-        Take a photo or upload an image of your receipt
-      </p>
-
-      {!draft && (
-        <label
-          style={{
-            display: "block",
-            border: "2px dashed #ddd",
-            borderRadius: "8px",
-            padding: "2rem",
-            textAlign: "center",
-            cursor: loading ? "default" : "pointer",
-            color: "#888",
-            fontSize: "14px",
-          }}
-        >
-          {loading ? "Scanning..." : "📷 Click to upload receipt"}
-          <input
-            key={inputKey}
-            type="file"
-            accept="image/*"
-            onChange={handleUpload}
-            style={{ display: "none" }}
-            disabled={loading}
-          />
-        </label>
-      )}
-
-      {error && (
-        <p className="error" style={{ marginTop: "8px" }}>
-          {error}
-        </p>
-      )}
-
-      {draft && (
-        <div
-          style={{
-            marginTop: "0.5rem",
-            padding: "1rem",
-            background: "#f9fafb",
-            border: "1px solid #eee",
-            borderRadius: "8px",
-          }}
-        >
-          <p
-            style={{
-              fontSize: "13px",
-              fontWeight: 500,
-              marginBottom: "12px",
-              color: draft.parsed_ok ? "#16a34a" : "#ea580c",
-            }}
-          >
-            {draft.parsed_ok
-              ? "✓ Receipt scanned — review and edit before saving"
-              : "⚠ Couldn't read this clearly — please check every field"}
+    <Card className={`${GLASS} rounded-2xl`}>
+      <CardContent className="space-y-3">
+        <div>
+          <h2 className="text-base font-medium">Scan a receipt</h2>
+          <p className="text-sm text-muted-foreground">
+            Take a photo or upload an image of your receipt
           </p>
-
-          <div style={{ marginBottom: "12px" }}>
-            <label style={labelStyle}>Merchant</label>
-            <input
-              type="text"
-              value={draft.merchant}
-              onChange={(e) => updateField("merchant", e.target.value)}
-              placeholder="Merchant name"
-              style={inputStyle}
-            />
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "12px",
-              marginBottom: "12px",
-            }}
-          >
-            <div>
-              <label style={labelStyle}>Amount</label>
-              <input
-                type="number"
-                value={draft.amount}
-                onChange={(e) => updateField("amount", e.target.value)}
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Currency</label>
-              <select
-                value={draft.currency}
-                onChange={(e) => updateField("currency", e.target.value)}
-                style={inputStyle}
-              >
-                {CURRENCIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "12px",
-              marginBottom: "12px",
-            }}
-          >
-            <div>
-              <label style={labelStyle}>Date</label>
-              <input
-                type="text"
-                value={draft.date}
-                onChange={(e) => updateField("date", e.target.value)}
-                placeholder="As printed on receipt"
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Category</label>
-              <select
-                value={draft.category}
-                onChange={(e) => updateField("category", e.target.value)}
-                style={inputStyle}
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {draft.raw_ocr_text && (
-            <details style={{ marginBottom: "12px" }}>
-              <summary style={{ fontSize: "12px", color: "#888", cursor: "pointer" }}>
-                Show scanned text
-              </summary>
-              <pre
-                style={{
-                  marginTop: "8px",
-                  whiteSpace: "pre-wrap",
-                  fontSize: "12px",
-                  color: "#666",
-                  background: "white",
-                  border: "1px solid #eee",
-                  borderRadius: "6px",
-                  padding: "8px",
-                  maxHeight: "160px",
-                  overflow: "auto",
-                }}
-              >
-                {draft.raw_ocr_text}
-              </pre>
-            </details>
-          )}
-
-          {saveError && (
-            <p className="error" style={{ marginBottom: "8px" }}>
-              {saveError}
-            </p>
-          )}
-
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button
-              onClick={handleDiscard}
-              disabled={saving}
-              style={{
-                width: "auto",
-                padding: "10px 16px",
-                background: "transparent",
-                color: "#888",
-                border: "1px solid #ddd",
-              }}
-            >
-              Discard
-            </button>
-            <button onClick={handleSave} disabled={saving} style={{ flex: 1 }}>
-              {saving ? "Saving..." : "Save expense"}
-            </button>
-          </div>
         </div>
-      )}
-    </div>
+
+        {!draft && (
+          <label
+            className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-white/15 px-6 py-8 text-center text-sm text-muted-foreground transition-colors ${
+              loading ? "cursor-default" : "cursor-pointer hover:border-primary/40 hover:bg-white/[0.02]"
+            }`}
+          >
+            <Upload className="h-6 w-6 opacity-70" />
+            {loading ? "Scanning..." : "Click to upload receipt"}
+            <input
+              key={inputKey}
+              type="file"
+              accept="image/*"
+              onChange={handleUpload}
+              className="hidden"
+              disabled={loading}
+            />
+          </label>
+        )}
+
+        {error && <p className="text-sm text-destructive">{error}</p>}
+
+        {draft && (
+          <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div
+              className={`flex items-center gap-2 text-sm font-medium ${
+                draft.parsed_ok ? "text-primary" : "text-[#F0B14B]"
+              }`}
+            >
+              {draft.parsed_ok ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <AlertTriangle className="h-4 w-4" />
+              )}
+              {draft.parsed_ok
+                ? "Receipt scanned — review and edit before saving"
+                : "Couldn't read this clearly — please check every field"}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Merchant</Label>
+              <Input
+                value={draft.merchant}
+                onChange={(e) => updateField("merchant", e.target.value)}
+                placeholder="Merchant name"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Amount</Label>
+                <Input
+                  type="number"
+                  value={draft.amount}
+                  onChange={(e) => updateField("amount", e.target.value)}
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Currency</Label>
+                <Select value={draft.currency} onValueChange={(v) => updateField("currency", v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CURRENCIES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Date</Label>
+                <Input
+                  type="text"
+                  value={draft.date}
+                  onChange={(e) => updateField("date", e.target.value)}
+                  placeholder="As printed on receipt"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Category</Label>
+                <Select value={draft.category} onValueChange={(v) => updateField("category", v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {draft.raw_ocr_text && (
+              <details className="text-sm">
+                <summary className="cursor-pointer text-muted-foreground">Show scanned text</summary>
+                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/20 p-2 text-xs text-muted-foreground">
+                  {draft.raw_ocr_text}
+                </pre>
+              </details>
+            )}
+
+            {saveError && <p className="text-sm text-destructive">{saveError}</p>}
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={handleDiscard}
+                disabled={saving}
+                className="border-white/15 bg-transparent hover:bg-white/5"
+              >
+                Discard
+              </Button>
+              <Button onClick={handleSave} disabled={saving} className="flex-1 font-medium">
+                {saving ? "Saving..." : "Save expense"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

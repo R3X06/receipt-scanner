@@ -3,6 +3,25 @@ import { login, signup } from "./api";
 import { useAuth } from "./AuthContext";
 import { CURRENCIES } from "./constants";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 export default function Login() {
   const { saveToken } = useAuth();
   const [isSignup, setIsSignup] = useState(false);
@@ -29,91 +48,94 @@ export default function Login() {
   }
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-    }}>
-      <div style={{
-        background: "white",
-        padding: "2rem",
-        borderRadius: "12px",
-        width: "100%",
-        maxWidth: "380px",
-        boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
-      }}>
-        <h1 style={{ marginBottom: "0.25rem", fontSize: "22px" }}>
-          {isSignup ? "Create account" : "Welcome back"}
-        </h1>
-        <p style={{ color: "#888", fontSize: "14px", marginBottom: "1.5rem" }}>
-          {isSignup ? "Start tracking your expenses" : "Sign in to your account"}
-        </p>
+    <div className="relative min-h-screen flex items-center justify-center p-4">
+      {/* soft purple glow behind the card */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(600px circle at 50% 50%, rgba(49, 15, 81, 0.12), transparent 0%)",
+        }}
+      />
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: "12px" }}>
-            <input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div style={{ marginBottom: isSignup ? "12px" : "16px" }}>
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-            />
-          </div>
+      <Card className="relative z-10 w-full max-w-sm rounded-2xl border-white/4 bg-white/[0.0] backdrop-blur-xl shadow-2xl shadow-black/30">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl font-sans tracking-tight text-glow2">
+            {isSignup ? "Create account" : "Welcome back"}
+          </CardTitle>
+          <CardDescription className = "text-glow2">
+            {isSignup ? "Start tracking your expenses" : "Sign in to your account"}
+          </CardDescription>
+        </CardHeader>
 
-          {isSignup && (
-            <div style={{ marginBottom: "16px" }}>
-              <label style={{ display: "block", fontSize: "12px", color: "#888", marginBottom: "4px" }}>
-                Primary currency
-              </label>
-              <select
-                value={currency}
-                onChange={e => setCurrency(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "10px 14px",
-                  border: "1px solid #ddd",
-                  borderRadius: "8px",
-                  fontSize: "15px",
-                  background: "white",
-                  boxSizing: "border-box",
-                }}
-              >
-                {CURRENCIES.map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <p style={{ fontSize: "12px", color: "#aaa", marginTop: "4px" }}>
-                Your charts will show totals converted into this currency.
-              </p>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-glow font-sans">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
             </div>
-          )}
 
-          {error && <p className="error">{error}</p>}
-          <button type="submit" disabled={loading} style={{ marginTop: "8px" }}>
-            {loading ? "Please wait..." : isSignup ? "Create account" : "Sign in"}
-          </button>
-        </form>
+            <div className="space-y-2">
+              <Label htmlFor="password" className="text-glow font-sans">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
 
-        <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "14px", color: "#888" }}>
-          {isSignup ? "Already have an account? " : "Don't have an account? "}
-          <span
-            onClick={() => setIsSignup(!isSignup)}
-            style={{ color: "#4f46e5", cursor: "pointer" }}
-          >
-            {isSignup ? "Sign in" : "Sign up"}
-          </span>
-        </p>
-      </div>
+            {isSignup && (
+              <div className="space-y-2">
+                <Label className = "text-glow2">Primary currency</Label>
+                <Select value={currency} onValueChange={setCurrency}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CURRENCIES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground text-glow2">
+                  Your charts will show totals converted into this currency.
+                </p>
+              </div>
+            )}
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
+
+            <Button type="submit" disabled={loading} className="w-full font-medium text-glow2">
+              {loading ? "Please wait..." : isSignup ? "Create account" : "Sign in"}
+            </Button>
+          </form>
+        </CardContent>
+
+        <CardFooter className="justify-center">
+          <p className="text-sm text-muted-foreground">
+            {isSignup ? "Already have an account? " : "Don't have an account? "}
+            <button
+              type="button"
+              onClick={() => setIsSignup(!isSignup)}
+              className="text-primary font-medium hover:underline"
+            >
+              {isSignup ? "Sign in" : "Sign up"}
+            </button>
+          </p>
+        </CardFooter>
+      </Card>
     </div>
   );
 }

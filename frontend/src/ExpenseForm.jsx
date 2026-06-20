@@ -3,13 +3,18 @@ import { createExpense } from "./api";
 import { useAuth } from "./AuthContext";
 import { CATEGORIES, CURRENCIES } from "./constants";
 
-const selectStyle = {
-  padding: "10px 14px",
-  border: "1px solid #ddd",
-  borderRadius: "8px",
-  fontSize: "15px",
-  background: "white",
-};
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 
 export default function ExpenseForm({ onExpenseAdded }) {
   const { token } = useAuth();
@@ -37,7 +42,6 @@ export default function ExpenseForm({ onExpenseAdded }) {
       setAmount("");
       setMerchant("");
       setDate(new Date().toISOString().split("T")[0]);
-      // category and currency intentionally kept for the next entry
     } catch (err) {
       setError(err.message);
     } finally {
@@ -46,62 +50,67 @@ export default function ExpenseForm({ onExpenseAdded }) {
   }
 
   return (
-    <div style={{
-      background: "white",
-      borderRadius: "12px",
-      padding: "1.5rem",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-      marginBottom: "1.5rem",
-    }}>
-      <h2 style={{ fontSize: "16px", marginBottom: "1rem" }}>Add expense</h2>
-      <form onSubmit={handleSubmit}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
-          <input
-            type="number"
-            placeholder="Amount"
-            value={amount}
-            onChange={e => setAmount(e.target.value)}
-            step="0.01"
-            min="0"
-            required
-          />
-          <select
-            value={currency}
-            onChange={e => setCurrency(e.target.value)}
-            style={selectStyle}
-          >
-            {CURRENCIES.map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-          <input
-            type="text"
-            placeholder="Merchant"
-            value={merchant}
-            onChange={e => setMerchant(e.target.value)}
-            required
-          />
-          <input
-            type="date"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-            required
-          />
-          <select
-            value={category}
-            onChange={e => setCategory(e.target.value)}
-            style={{ ...selectStyle, gridColumn: "1 / -1" }}
-          >
-            {CATEGORIES.map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-        </div>
-        {error && <p className="error">{error}</p>}
-        <button type="submit" disabled={loading}>
-          {loading ? "Adding..." : "Add expense"}
-        </button>
-      </form>
-    </div>
+    <Card className={`${GLASS} rounded-2xl`}>
+      <CardContent className="space-y-4">
+        <h2 className="text-base font-medium">Add expense</h2>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              type="number"
+              placeholder="Amount"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              step="0.01"
+              min="0"
+              required
+            />
+            <Select value={currency} onValueChange={setCurrency}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CURRENCIES.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              type="text"
+              placeholder="Merchant"
+              value={merchant}
+              onChange={(e) => setMerchant(e.target.value)}
+              required
+            />
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              required
+              className="[&::-webkit-calendar-picker-indicator]:invert"
+            />
+            <div className="col-span-2">
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button type="submit" disabled={loading} className="w-full font-medium">
+            {loading ? "Adding..." : "Add expense"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

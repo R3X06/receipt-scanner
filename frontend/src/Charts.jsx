@@ -1,14 +1,33 @@
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from "recharts";
+import { Card, CardContent } from "@/components/ui/card";
 
-const COLORS = ["#4f46e5", "#7c3aed", "#db2777", "#ea580c", "#ca8a04", "#16a34a", "#0891b2"];
+const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 
-// Converted base-currency amount, with a fallback for any older rows.
+const CATEGORY_COLORS = {
+  "Food & Drink": "#F0B14B",
+  Transport: "#34D6E7",
+  Shopping: "#A855F7",
+  Health: "#F06B9A",
+  Entertainment: "#818CF8",
+  Utilities: "#38BDF8",
+  Other: "#8A97A6",
+};
+const FALLBACK = ["#A855F7", "#34D6E7", "#818CF8", "#F0B14B", "#F06B9A", "#38BDF8", "#8A97A6"];
+const colorFor = (name, i) => CATEGORY_COLORS[name] || FALLBACK[i % FALLBACK.length];
+
+const tooltipStyle = {
+  background: "#121821",
+  border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 10,
+  color: "#E8EDF2",
+  fontSize: 13,
+};
+
 const baseAmount = (e) => (e.amount_base != null ? e.amount_base : e.amount);
 
-// Month bucket from fx_date (ISO), then raw date, then created_at.
 function monthKey(e) {
   for (const c of [e.fx_date, e.date, e.created_at]) {
     if (typeof c === "string") {
@@ -22,42 +41,68 @@ function monthKey(e) {
 function CategoryChart({ expenses, baseCurrency }) {
   const data = expenses
     .reduce((acc, e) => {
-      const existing = acc.find(item => item.name === e.category);
+      const existing = acc.find((item) => item.name === e.category);
       if (existing) existing.value += baseAmount(e);
       else acc.push({ name: e.category, value: baseAmount(e) });
       return acc;
     }, [])
-    .map(d => ({ ...d, value: parseFloat(d.value.toFixed(2)) }));
+    .map((d) => ({ ...d, value: parseFloat(d.value.toFixed(2)) }))
+    .sort((a, b) => b.value - a.value);
 
   if (data.length === 0) return null;
+  const total = data.reduce((s, d) => s + d.value, 0);
 
   return (
-    <div style={{
-      background: "white",
-      borderRadius: "12px",
-      padding: "1.5rem",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-      marginBottom: "1.5rem",
-    }}>
-      <h2 style={{ fontSize: "16px", marginBottom: "2px" }}>Spending by category</h2>
-      <p style={{ fontSize: "12px", color: "#888", marginBottom: "1rem" }}>Converted to {baseCurrency}</p>
-      <ResponsiveContainer width="100%" height={220}>
-        <PieChart>
-          <Pie data={data} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={3} dataKey="value">
-            {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-          </Pie>
-          <Tooltip formatter={(val) => `${baseCurrency} ${val.toFixed(2)}`} />
-        </PieChart>
-      </ResponsiveContainer>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "0.5rem" }}>
-        {data.map((item, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "13px" }}>
-            <div style={{ width: 10, height: 10, borderRadius: "50%", background: COLORS[i % COLORS.length] }} />
-            <span>{item.name}: {baseCurrency} {item.value.toFixed(2)}</span>
+    <Card className={`${GLASS} rounded-2xl`}>
+      <CardContent className="space-y-1">
+        <h2 className="text-base font-medium">Spending by category</h2>
+        <p className="text-xs text-muted-foreground">Converted to {baseCurrency}</p>
+
+        <div className="relative mt-2">
+          <ResponsiveContainer width="100%" height={220}>
+            <PieChart>
+              <Pie
+                data={data}
+                cx="50%"
+                cy="50%"
+                innerRadius={62}
+                outerRadius={92}
+                paddingAngle={3}
+                dataKey="value"
+                stroke="none"
+              >
+                {data.map((d, i) => (
+                  <Cell key={i} fill={colorFor(d.name, i)} />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={tooltipStyle}
+                labelStyle={{ color: "#E8EDF2" }}
+                formatter={(val, name) => [`${baseCurrency} ${Number(val).toFixed(2)}`, name]}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-xs text-muted-foreground">Total</span>
+            <span className="text-lg font-semibold tabular-nums">{total.toFixed(2)}</span>
           </div>
-        ))}
-      </div>
-    </div>
+        </div>
+
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+          {data.map((item, i) => (
+            <div key={i} className="flex items-center gap-2 text-sm">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: colorFor(item.name, i) }} />
+              <span className="text-muted-foreground">
+                {item.name}{" "}
+                <span className="text-foreground tabular-nums">
+                  {baseCurrency} {item.value.toFixed(2)}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -66,36 +111,46 @@ function MonthlyChart({ expenses, baseCurrency }) {
     .reduce((acc, e) => {
       const month = monthKey(e);
       if (!month) return acc;
-      const existing = acc.find(item => item.month === month);
+      const existing = acc.find((item) => item.month === month);
       if (existing) existing.amount += baseAmount(e);
       else acc.push({ month, amount: baseAmount(e) });
       return acc;
     }, [])
-    .map(d => ({ ...d, amount: parseFloat(d.amount.toFixed(2)) }))
+    .map((d) => ({ ...d, amount: parseFloat(d.amount.toFixed(2)) }))
     .sort((a, b) => a.month.localeCompare(b.month));
 
   if (data.length === 0) return null;
 
   return (
-    <div style={{
-      background: "white",
-      borderRadius: "12px",
-      padding: "1.5rem",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-      marginBottom: "1.5rem",
-    }}>
-      <h2 style={{ fontSize: "16px", marginBottom: "2px" }}>Monthly totals</h2>
-      <p style={{ fontSize: "12px", color: "#888", marginBottom: "1rem" }}>Converted to {baseCurrency}</p>
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-          <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-          <YAxis tick={{ fontSize: 12 }} />
-          <Tooltip formatter={(val) => `${baseCurrency} ${val.toFixed(2)}`} />
-          <Bar dataKey="amount" fill="#4f46e5" radius={[4, 4, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <Card className={`${GLASS} rounded-2xl`}>
+      <CardContent className="space-y-1">
+        <h2 className="text-base font-medium">Monthly totals</h2>
+        <p className="text-xs text-muted-foreground">Converted to {baseCurrency}</p>
+
+        <div className="mt-2">
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={data}>
+              <defs>
+                <linearGradient id="barFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#A855F7" stopOpacity={0.95} />
+                  <stop offset="100%" stopColor="#A855F7" stopOpacity={0.25} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#8A97A6" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 12, fill: "#8A97A6" }} axisLine={false} tickLine={false} />
+              <Tooltip
+                cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                contentStyle={tooltipStyle}
+                labelStyle={{ color: "#E8EDF2" }}
+                formatter={(val) => [`${baseCurrency} ${Number(val).toFixed(2)}`, "Spent"]}
+              />
+              <Bar dataKey="amount" fill="url(#barFill)" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
