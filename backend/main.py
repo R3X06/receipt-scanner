@@ -150,8 +150,9 @@ async def scan_receipt(
     current_user: models.User = Depends(auth.get_current_user)
 ):
     contents = await file.read()
+    base_currency = current_user.primary_currency or "SGD"
     raw_text = ocr.extract_text_from_image(contents)
-    parsed = ocr.parse_receipt(raw_text)
+    parsed = ocr.parse_receipt(raw_text, base_currency=base_currency)
 
     return {
         "merchant": parsed["merchant"],
