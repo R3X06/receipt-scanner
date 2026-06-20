@@ -5,15 +5,19 @@ import re
 
 GOOGLE_VISION_API_KEY = os.getenv("GOOGLE_VISION_API_KEY")
 
+# A bare "$" is intentionally NOT mapped here — it's ambiguous (USD/SGD/AUD/HKD
+# all use it). Only explicit markers (USD, US$) map to USD. Anything that shows
+# just "$" falls through detect_currency's `default`, which is the user's own
+# base currency — the best available signal of where they are.
 CURRENCY_PATTERNS = [
-    (r'\bMYR\b|RM\s*\d', 'MYR'),
-    (r'\bSGD\b|S\$', 'SGD'),
+    (r'\bMYR\b|\bRM\s*\d', 'MYR'),
+    (r'\bSGD\b|\bS\$', 'SGD'),
     (r'\bGBP\b|£', 'GBP'),
     (r'\bEUR\b|€', 'EUR'),
-    (r'\bAUD\b|A\$', 'AUD'),
+    (r'\bAUD\b|\bA\$', 'AUD'),
     (r'\bJPY\b|¥', 'JPY'),
     (r'\bINR\b|₹|\bRs\.?\s*\d', 'INR'),
-    (r'\bUSD\b|US\$|\$\s*\d', 'USD'),
+    (r'\bUSD\b|\bUS\$', 'USD'),
 ]
 
 def detect_currency(text: str, default: str = "USD") -> str:
