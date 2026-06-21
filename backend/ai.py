@@ -21,25 +21,48 @@ INSIGHTS_MODEL = MODEL2
 
 INSIGHTS_SYSTEM = (
     "You are a financial assistant inside an expense-tracking app. From the JSON "
-    "spending data, write 2-4 short, specific insights (biggest category, notable "
-    "month-over-month changes, currencies used, any standout expenses). All totals are "
-    "in {base_currency}. Use the real numbers, one short sentence per insight, formatted "
-    "as a plain list with '- '. Be concrete, not generic. If there's too little data for "
-    "a real insight, say so.\n\nDATA:\n{data}"
+    "spending data, write 3-5 short, specific insights. All totals are in {base_currency}. "
+    "Use the real numbers, one short sentence per insight, formatted as a plain list with "
+    "'- '. Be concrete, not generic.\n\n"
+    "Tailor the insights to the USER PROFILE when it's set:\n"
+    "- If goals are given, make at least one insight speak to progress toward them.\n"
+    "- If monthly income is given, mention their savings rate or what share of income they "
+    "spent (monthly spend vs income).\n"
+    "- If a monthly budget is given, note whether they're over or under it for the latest month.\n"
+    "- Let occupation gently shape tone (e.g. a student vs full-time worker), never patronising.\n"
+    "Keep advice practical and non-judgmental. If there's too little data, say so.\n\n"
+    "USER PROFILE:\n{profile}\n\nDATA:\n{data}"
 )
 
 
-def generate_insights(expenses, base_currency):
+def generate_insights(expenses, base_currency, profile=None):
     if not expenses:
         return "Add a few expenses and I'll surface some insights about your spending."
 
     context = build_spending_context(expenses, base_currency)
-    system = INSIGHTS_SYSTEM.format(base_currency=base_currency, data=json.dumps(context))
+
+    profile = profile or {}
+    lines = []
+    if profile.get("goals"):
+        lines.append(f"Goals: {profile['goals']}")
+    if profile.get("monthly_income"):
+        lines.append(f"Monthly income: {profile['monthly_income']} {base_currency}")
+    if profile.get("monthly_budget"):
+        lines.append(f"Monthly budget: {profile['monthly_budget']} {base_currency}")
+    if profile.get("occupation"):
+        lines.append(f"Occupation: {profile['occupation']}")
+    profile_block = "\n".join(lines) if lines else "None provided."
+
+    system = INSIGHTS_SYSTEM.format(
+        base_currency=base_currency,
+        profile=profile_block,
+        data=json.dumps(context),
+    )
 
     resp = _get_client().chat.completions.create(
         model=INSIGHTS_MODEL,
         temperature=0.4,
-        max_tokens=400,
+        max_tokens=450,
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": "Give me insights about my spending."},

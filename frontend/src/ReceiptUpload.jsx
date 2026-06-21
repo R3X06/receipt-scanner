@@ -67,7 +67,7 @@ export default function ReceiptUpload({ onExpenseAdded }) {
         amount: data.amount ? String(data.amount) : "",
         date: data.date || "",
         category,
-        currency: CURRENCIES.includes(data.currency) ? data.currency : "USD",
+        currency: CURRENCIES.includes(data.currency) ? data.currency : "SGD",
         raw_ocr_text: data.raw_ocr_text || "",
         parsed_ok: data.parsed_ok,
       });

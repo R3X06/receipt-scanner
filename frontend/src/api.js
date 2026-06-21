@@ -111,3 +111,41 @@ export async function extractFields(token, payload) {
   if (!res.ok) throw new Error(data.detail || "AI request failed");
   return data;
 }
+
+export async function updateExpense(token, id, expense) {
+  const res = await fetch(`${API_URL}/expenses/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(expense),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to update expense");
+  return data;
+}
+
+export async function deleteExpense(token, id) {
+  const res = await fetch(`${API_URL}/expenses/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to delete expense");
+  return data;
+}
+
+export async function updateMe(token, payload) {
+  const res = await fetch(`${API_URL}/users/me`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to update profile");
+  return data;
+}

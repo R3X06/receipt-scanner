@@ -13,6 +13,9 @@ import os
 
 Base.metadata.create_all(bind=engine)
 
+import migrate
+migrate.run()
+
 app = FastAPI()
 
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
@@ -48,6 +51,15 @@ class ExpenseRequest(BaseModel):
 class AskRequest(BaseModel):
     question: str
 
+class UserUpdateRequest(BaseModel):
+    display_name: Optional[str] = None
+    avatar: Optional[str] = None
+    primary_currency: Optional[str] = None
+    monthly_budget: Optional[float] = None
+    occupation: Optional[str] = None
+    monthly_income: Optional[float] = None
+    goals: Optional[str] = None
+
 
 @app.get("/health")
 def health():
@@ -78,14 +90,38 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     token = auth.create_token({"sub": user.email})
     return {"access_token": token, "token_type": "bearer"}
 
+def _user_payload(u: models.User):
+    return {
+        "id": u.id,
+        "email": u.email,
+        "display_name": u.display_name or "",
+        "avatar": u.avatar or "",
+        "primary_currency": u.primary_currency or "SGD",
+        "monthly_budget": u.monthly_budget,
+        "occupation": u.occupation,
+        "monthly_income": u.monthly_income,
+        "goals": u.goals or "",
+    }
+
 
 @app.get("/auth/me")
 def me(current_user: models.User = Depends(auth.get_current_user)):
-    return {
-        "id": current_user.id,
-        "email": current_user.email,
-        "primary_currency": current_user.primary_currency or "SGD",
-    }
+    return _user_payload(current_user)
+
+
+@app.put("/users/me")
+def update_me(
+    body: UserUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    data = body.model_dump(exclude_unset=True) if hasattr(body, "model_dump") else body.dict(exclude_unset=True)
+    for field in ("display_name", "avatar", "primary_currency", "monthly_budget", "occupation", "monthly_income", "goals"):
+        if field in data:
+            setattr(current_user, field, data[field])
+    db.commit()
+    db.refresh(current_user)
+    return _user_payload(current_user)
 
 
 @app.post("/expenses")
@@ -120,6 +156,60 @@ def create_expense(
     db.commit()
     db.refresh(expense)
     return expense
+
+@app.put("/expenses/{expense_id}")
+def update_expense(
+    expense_id: str,
+    body: ExpenseRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    expense = db.query(models.Expense).filter(
+        models.Expense.id == expense_id,
+        models.Expense.user_id == current_user.id,
+    ).first()
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    base_currency = current_user.primary_currency or fx.DEFAULT_BASE_CURRENCY
+    conversion = fx.convert_to_base(
+        amount=body.amount,
+        currency=body.currency,
+        base_currency=base_currency,
+        receipt_date_str=body.date,
+    )
+
+    expense.amount = body.amount
+    expense.merchant = body.merchant
+    expense.date = body.date
+    expense.category = body.category
+    expense.currency = body.currency
+    expense.amount_base = conversion["amount_base"]
+    expense.base_currency = conversion["base_currency"]
+    expense.fx_rate = conversion["fx_rate"]
+    expense.fx_date = conversion["fx_date"]
+    # raw_ocr_text / parsed_ok deliberately preserved — keep the scan provenance
+
+    db.commit()
+    db.refresh(expense)
+    return expense
+
+
+@app.delete("/expenses/{expense_id}")
+def delete_expense(
+    expense_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    expense = db.query(models.Expense).filter(
+        models.Expense.id == expense_id,
+        models.Expense.user_id == current_user.id,
+    ).first()
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    db.delete(expense)
+    db.commit()
+    return {"ok": True, "id": expense_id}
 
 
 @app.get("/expenses")
@@ -198,8 +288,14 @@ def ai_insights(
     ).order_by(models.Expense.created_at.desc()).all()
 
     base_currency = current_user.primary_currency or "SGD"
+    profile = {
+        "goals": current_user.goals,
+        "monthly_income": current_user.monthly_income,
+        "monthly_budget": current_user.monthly_budget,
+        "occupation": current_user.occupation,
+    }
     try:
-        insights = ai.generate_insights(expenses, base_currency)
+        insights = ai.generate_insights(expenses, base_currency, profile=profile)
     except Exception as exc:
         print(f"AI insights failed: {exc}")
         raise HTTPException(

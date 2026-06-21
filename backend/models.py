@@ -17,6 +17,12 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     primary_currency = Column(String, default="SGD")
+    display_name = Column(String, nullable=True)
+    avatar = Column(String, nullable=True)            # emoji string, or empty = initials
+    monthly_budget = Column(Float, nullable=True)
+    occupation = Column(String, nullable=True)        # 'full_time' | 'part_time' | 'student'
+    monthly_income = Column(Float, nullable=True)
+    goals = Column(TEXT, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     expenses = relationship("Expense", back_populates="owner")
