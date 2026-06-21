@@ -283,9 +283,7 @@ def ai_ask(
     if not body.question or not body.question.strip():
         raise HTTPException(status_code=400, detail="Please enter a question.")
 
-    expenses = db.query(models.Expense).filter(
-        models.Expense.user_id == current_user.id
-    ).order_by(models.Expense.created_at.desc()).all()
+    expenses = _ledger_expenses_for_ai(db, current_user)
 
     base_currency = current_user.primary_currency or "SGD"
     try:
@@ -303,9 +301,7 @@ def ai_insights(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    expenses = db.query(models.Expense).filter(
-        models.Expense.user_id == current_user.id
-    ).order_by(models.Expense.created_at.desc()).all()
+    expenses = _ledger_expenses_for_ai(db, current_user)
 
     base_currency = current_user.primary_currency or "SGD"
     profile = {
@@ -650,22 +646,24 @@ def ledger_withdraw(body: WithdrawRequest, db: Session = Depends(get_db),
 
 
 @app.get("/ledger/entries")
-def ledger_entries(limit: int = 200, db: Session = Depends(get_db),
+def ledger_entries(limit: int = 1000, db: Session = Depends(get_db),
                    current_user: models.User = Depends(auth.get_current_user)):
-    names = {a.id: a.name for a in db.query(models.Account).filter(
+    accs = {a.id: a for a in db.query(models.Account).filter(
         models.Account.user_id == current_user.id).all()}
     rows = db.query(models.LedgerEntry).filter(
         models.LedgerEntry.user_id == current_user.id
     ).order_by(models.LedgerEntry.created_at.desc()).limit(limit).all()
     out = []
     for e in rows:
+        frm, to = accs.get(e.from_account_id), accs.get(e.to_account_id)
         kind = "income" if e.from_account_id is None else ("expense" if e.to_account_id is None else "transfer")
         out.append({
-            "id": e.id, "kind": kind, "date": e.date or e.fx_date,
+            "id": e.id, "kind": kind, "date": e.date, "fx_date": e.fx_date,
             "amount": e.amount, "currency": e.currency, "amount_base": e.amount_base,
             "category": e.category, "counterparty": e.counterparty, "note": e.note,
             "from_account_id": e.from_account_id, "to_account_id": e.to_account_id,
-            "from": names.get(e.from_account_id), "to": names.get(e.to_account_id),
+            "from": frm.name if frm else None, "to": to.name if to else None,
+            "from_type": frm.type if frm else None, "to_type": to.type if to else None,
         })
     return {"entries": out}
 
@@ -722,3 +720,17 @@ def update_entry(entry_id: str, body: LedgerEntryUpdate, db: Session = Depends(g
     db.commit()
     db.refresh(e)
     return e
+
+def _ledger_expenses_for_ai(db, user):
+    rows = db.query(models.LedgerEntry).filter(
+        models.LedgerEntry.user_id == user.id,
+        models.LedgerEntry.to_account_id.is_(None),   # outflow = an expense
+    ).order_by(models.LedgerEntry.created_at.desc()).all()
+    return [
+        types.SimpleNamespace(
+            amount=e.amount, amount_base=e.amount_base, currency=e.currency,
+            category=e.category, merchant=e.counterparty or "Unknown",
+            fx_date=e.fx_date, date=e.date,
+        )
+        for e in rows
+    ]

@@ -1,17 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
 import { CATEGORIES, CURRENCIES } from "./constants";
-import { updateExpense, deleteExpense } from "./api";
+import { updateExpense, deleteExpense, getAccounts } from "./api";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pencil, Trash2, Check, X } from "lucide-react";
 
 const CATEGORY_COLORS = {
@@ -24,13 +18,7 @@ const CATEGORY_COLORS = {
   Other: "#8A97A6",
 };
 
-const FUNDING_SOURCES = [
-  { value: "unaccounted", label: "Unaccounted" },
-  { value: "income", label: "From income" },
-  { value: "savings", label: "From savings" },
-];
-
-function ExpenseRow({ expense, onUpdated, onDeleted }) {
+function ExpenseRow({ expense, accounts, onUpdated, onDeleted }) {
   const { token } = useAuth();
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -42,9 +30,8 @@ function ExpenseRow({ expense, onUpdated, onDeleted }) {
     currency: expense.currency || "SGD",
     date: expense.date || "",
     category: CATEGORIES.includes(expense.category) ? expense.category : "Other",
-    funding_source: expense.funding_source || "unaccounted",
+    from_account_id: expense.from_account_id || "",
   });
-
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   async function save() {
@@ -54,13 +41,16 @@ function ExpenseRow({ expense, onUpdated, onDeleted }) {
     setBusy(true);
     setError("");
     try {
+      const acc = accounts.find((a) => a.id === form.from_account_id);
       const updated = await updateExpense(token, expense.id, {
         amount: amountNum,
         merchant: form.merchant.trim(),
         date: form.date,
         category: form.category,
         currency: form.currency,
-        funding_source: form.funding_source,
+        from_account_id: form.from_account_id || null,
+        from_type: acc?.type,
+        from_name: acc?.name,
       });
       onUpdated(updated);
       setEditing(false);
@@ -88,57 +78,35 @@ function ExpenseRow({ expense, onUpdated, onDeleted }) {
     return (
       <div className="space-y-3 px-5 py-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Input
-            value={form.merchant}
-            onChange={(e) => setField("merchant", e.target.value)}
-            placeholder="Merchant"
-          />
+          <Input value={form.merchant} onChange={(e) => setField("merchant", e.target.value)} placeholder="Merchant" />
           <div className="grid grid-cols-2 gap-2">
-            <Input
-              type="number"
-              value={form.amount}
-              onChange={(e) => setField("amount", e.target.value)}
-              step="0.01"
-              min="0"
-              placeholder="Amount"
-            />
+            <Input type="number" value={form.amount} onChange={(e) => setField("amount", e.target.value)} step="0.01" min="0" placeholder="Amount" />
             <Select value={form.currency} onValueChange={(v) => setField("currency", v)}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-              </SelectContent>
+              <SelectContent>{CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <Input
-            type="text"
-            value={form.date}
-            onChange={(e) => setField("date", e.target.value)}
-            placeholder="Date (as printed)"
-          />
+          <Input type="text" value={form.date} onChange={(e) => setField("date", e.target.value)} placeholder="Date (as printed)" />
           <Select value={form.category} onValueChange={(v) => setField("category", v)}>
             <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-            </SelectContent>
+            <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
           </Select>
           <div className="sm:col-span-2">
-            <Select value={form.funding_source} onValueChange={(v) => setField("funding_source", v)}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+            <Select value={form.from_account_id} onValueChange={(v) => setField("from_account_id", v)}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Paid from" /></SelectTrigger>
               <SelectContent>
-                {FUNDING_SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                {accounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.type === "spending" ? "Spending" : `Savings · ${a.name}`}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => { setEditing(false); setError(""); }}
-            disabled={busy}
-            className="border-white/15 bg-transparent hover:bg-white/5"
-          >
+          <Button variant="outline" size="sm" onClick={() => { setEditing(false); setError(""); }} disabled={busy} className="border-white/15 bg-transparent hover:bg-white/5">
             <X className="mr-1 h-3.5 w-3.5" /> Cancel
           </Button>
           <Button size="sm" onClick={save} disabled={busy} className="font-medium">
@@ -152,48 +120,32 @@ function ExpenseRow({ expense, onUpdated, onDeleted }) {
   return (
     <div className="flex items-center justify-between gap-3 px-5 py-4">
       <div className="flex min-w-0 items-center gap-3">
-        <span
-          className="h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{ background: CATEGORY_COLORS[expense.category] || "#8A97A6" }}
-        />
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: CATEGORY_COLORS[expense.category] || "#8A97A6" }} />
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <p className="truncate font-medium">{expense.merchant}</p>
             {expense.funding_source === "savings" && (
-              <span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">savings</span>
-            )}
-            {expense.funding_source === "income" && (
-              <span className="shrink-0 rounded-full border border-white/10 px-1.5 py-0.5 text-[10px] text-muted-foreground">income</span>
+              <span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                {expense.from_name || "savings"}
+              </span>
             )}
           </div>
-          <p className="truncate text-sm text-muted-foreground">
-            {expense.category} · {expense.date}
-          </p>
+          <p className="truncate text-sm text-muted-foreground">{expense.category} · {expense.date}</p>
         </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-3">
-        <p className="font-semibold tabular-nums">
-          {expense.currency || "SGD"} {Number(expense.amount).toFixed(2)}
-        </p>
+        <p className="font-semibold tabular-nums">{expense.currency || "SGD"} {Number(expense.amount).toFixed(2)}</p>
         {confirmDelete ? (
           <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground">Delete?</span>
-            <button onClick={remove} disabled={busy} aria-label="Confirm delete" className="text-destructive hover:opacity-80">
-              <Check className="h-4 w-4" />
-            </button>
-            <button onClick={() => setConfirmDelete(false)} disabled={busy} aria-label="Cancel delete" className="text-muted-foreground hover:text-foreground">
-              <X className="h-4 w-4" />
-            </button>
+            <button onClick={remove} disabled={busy} aria-label="Confirm delete" className="text-destructive hover:opacity-80"><Check className="h-4 w-4" /></button>
+            <button onClick={() => setConfirmDelete(false)} disabled={busy} aria-label="Cancel delete" className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <button onClick={() => setEditing(true)} aria-label="Edit expense" className="text-muted-foreground hover:text-foreground">
-              <Pencil className="h-4 w-4" />
-            </button>
-            <button onClick={() => setConfirmDelete(true)} aria-label="Delete expense" className="text-muted-foreground hover:text-destructive">
-              <Trash2 className="h-4 w-4" />
-            </button>
+            <button onClick={() => setEditing(true)} aria-label="Edit expense" className="text-muted-foreground hover:text-foreground"><Pencil className="h-4 w-4" /></button>
+            <button onClick={() => setConfirmDelete(true)} aria-label="Delete expense" className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
           </div>
         )}
       </div>
@@ -202,9 +154,13 @@ function ExpenseRow({ expense, onUpdated, onDeleted }) {
 }
 
 export default function ExpenseList({ expenses, loading, hasFilter, onUpdated, onDeleted }) {
-  if (loading) {
-    return <p className="py-8 text-center text-muted-foreground">Loading...</p>;
-  }
+  const { token } = useAuth();
+  const [accounts, setAccounts] = useState([]);
+  useEffect(() => {
+    getAccounts(token).then((d) => setAccounts(d.accounts || [])).catch(() => {});
+  }, [token]);
+
+  if (loading) return <p className="py-8 text-center text-muted-foreground">Loading...</p>;
   if (!expenses.length) {
     return (
       <p className="py-8 text-center text-muted-foreground">
@@ -215,7 +171,7 @@ export default function ExpenseList({ expenses, loading, hasFilter, onUpdated, o
   return (
     <div className="divide-y divide-white/5">
       {expenses.map((e) => (
-        <ExpenseRow key={e.id} expense={e} onUpdated={onUpdated} onDeleted={onDeleted} />
+        <ExpenseRow key={e.id} expense={e} accounts={accounts} onUpdated={onUpdated} onDeleted={onDeleted} />
       ))}
     </div>
   );

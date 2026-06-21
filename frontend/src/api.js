@@ -31,35 +31,6 @@ export async function getMe(token) {
   return data;
 }
 
-export async function createExpense(token, expense) {
-  const res = await fetch(`${API_URL}/expenses`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(expense),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || "Failed to create expense");
-  return data;
-}
-
-export async function getExpenses(token, filters = {}) {
-  const params = new URLSearchParams();
-  if (filters.start) params.append("start_date", filters.start);
-  if (filters.end) params.append("end_date", filters.end);
-  if (filters.category) params.append("category", filters.category);
-  const qs = params.toString();
-
-  const res = await fetch(`${API_URL}/expenses${qs ? `?${qs}` : ""}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || "Failed to fetch expenses");
-  return data;
-}
-
 export async function askAI(token, question) {
   const res = await fetch(`${API_URL}/ai/ask`, {
     method: "POST",
@@ -112,22 +83,78 @@ export async function extractFields(token, payload) {
   return data;
 }
 
+// ledger expense entry -> the legacy shape the UI components expect
+function toLegacyExpense(e) {
+  return {
+    id: e.id,
+    amount: e.amount,
+    amount_base: e.amount_base,
+    currency: e.currency || "SGD",
+    category: e.category || "Other",
+    merchant: e.counterparty || "Unknown",
+    date: e.date || e.fx_date || "",
+    fx_date: e.fx_date || e.date || "",
+    note: e.note || "",
+    from_account_id: e.from_account_id || null,
+    from_name: e.from || null,
+    funding_source: e.from_type === "goal" ? "savings" : "spending",
+  };
+}
+
+export async function createExpense(token, expense) {
+  const res = await fetch(`${API_URL}/ledger/expense`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      amount: expense.amount,
+      merchant: expense.merchant,
+      date: expense.date,
+      category: expense.category,
+      currency: expense.currency,
+      from_account_id: expense.from_account_id || null,
+      raw_ocr_text: expense.raw_ocr_text || "",
+      parsed_ok: expense.parsed_ok != null ? expense.parsed_ok : true,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to create expense");
+  // map raw entry -> legacy; use the form's hints so the savings pill is right immediately
+  return toLegacyExpense({ ...data, from: expense.from_name, from_type: expense.from_type });
+}
+
+export async function getExpenses(token, filters = {}) {
+  const res = await fetch(`${API_URL}/ledger/entries?limit=1000`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to fetch expenses");
+  let list = (data.entries || []).filter((e) => e.kind === "expense").map(toLegacyExpense);
+  if (filters.category) list = list.filter((e) => e.category === filters.category);
+  if (filters.start) list = list.filter((e) => (e.fx_date || e.date) >= filters.start);
+  if (filters.end) list = list.filter((e) => (e.fx_date || e.date) <= filters.end);
+  return list;
+}
+
 export async function updateExpense(token, id, expense) {
-  const res = await fetch(`${API_URL}/expenses/${id}`, {
+  const res = await fetch(`${API_URL}/ledger/entries/${id}`, {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(expense),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      amount: expense.amount,
+      merchant: expense.merchant,
+      date: expense.date,
+      category: expense.category,
+      currency: expense.currency,
+      from_account_id: expense.from_account_id || null,
+    }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || "Failed to update expense");
-  return data;
+  return toLegacyExpense({ ...data, from: expense.from_name, from_type: expense.from_type });
 }
 
 export async function deleteExpense(token, id) {
-  const res = await fetch(`${API_URL}/expenses/${id}`, {
+  const res = await fetch(`${API_URL}/ledger/entries/${id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
