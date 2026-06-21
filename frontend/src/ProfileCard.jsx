@@ -103,7 +103,7 @@ export default function ProfileCard({ user, expenses, onOpenSettings }) {
             <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
               {budget ? (
                 <div className="flex items-center justify-between">
-                  <span className={`text-sm font-medium ${budgetLeftPct < 0 ? "text-destructive" : "text-primary"}`}>
+                  <span className={`text-sm font-medium ${budgetLeftPct < 0 ? "text-destructive" : "text-primary-enhanced"}`}>
                     {budgetLeftPct}% of budget left
                   </span>
                   <button onClick={openSettings} className="text-xs text-muted-foreground hover:text-foreground">
@@ -111,14 +111,14 @@ export default function ProfileCard({ user, expenses, onOpenSettings }) {
                   </button>
                 </div>
               ) : (
-                <button onClick={openSettings} className="text-sm text-primary hover:underline">
+                <button onClick={openSettings} className="text-sm text-primary-enhanced hover:underline">
                   Set a monthly budget
                 </button>
               )}
             </div>
 
             <div>
-              <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+              <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary-enhanced">
                 {spenderTag}
               </span>
             </div>
