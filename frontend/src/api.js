@@ -182,3 +182,71 @@ export async function deleteSaving(token, id) {
   if (!res.ok) throw new Error(data.detail || "Failed to delete savings entry");
   return data;
 }
+
+export async function getAccounts(token) {
+  const res = await fetch(`${API_URL}/accounts`, { headers: { Authorization: `Bearer ${token}` } });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to fetch accounts");
+  return data;
+}
+
+export async function createGoal(token, payload) {
+  const res = await fetch(`${API_URL}/accounts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to create goal");
+  return data;
+}
+
+export async function deleteGoal(token, id) {
+  const res = await fetch(`${API_URL}/accounts/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to delete goal");
+  return data;
+}
+
+export async function allocateSavings(token, payload) {
+  const res = await fetch(`${API_URL}/ledger/allocate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to allocate");
+  return data;
+}
+
+export async function withdrawSavings(token, payload) {
+  const res = await fetch(`${API_URL}/ledger/withdraw`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to withdraw");
+  return data;
+}
+
+export async function getCashflow(token) {
+  const res = await fetch(`${API_URL}/ledger/cashflow`, { headers: { Authorization: `Bearer ${token}` } });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to fetch cash flow");
+  return data;
+}
+
+export async function addLedgerIncome(token, payload) {
+  const res = await fetch(`${API_URL}/ledger/income`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to add income");
+  return data;
+}

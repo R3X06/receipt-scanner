@@ -11,6 +11,9 @@ import ProfileCard from "./ProfileCard";
 import ExpenseList from "./ExpenseList";
 import Settings from "./Settings";
 import Savings from "./Savings";
+import Goals from "./Goals";
+import CashFlowCard from "./CashFlowCard";
+import IncomeForm from "./IncomeForm";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +52,7 @@ export default function Dashboard() {
 
   const [openDialog, setOpenDialog] = useState(null); // 'scan'|'add'|'ask'|'insights'|'filter'
   const [expensesOpen, setExpensesOpen] = useState(true);
+  const [ledgerReload, setLedgerReload] = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -61,6 +65,7 @@ export default function Dashboard() {
   const baseCurrency = user?.primary_currency || "SGD";
   const displayName = (user?.display_name && user.display_name.trim()) || (user?.email ? user.email.split("@")[0] : "your");
   const hasFilter = !!(filters.start || filters.end || filters.category);
+  
 
   // keep the list open whenever a filter is active, so results are visible
   useEffect(() => {
@@ -194,8 +199,11 @@ export default function Dashboard() {
               ))}
             </div>
 
+            <CashFlowCard reloadKey={ledgerReload} />
+
             {/* charts */}
             <Charts expenses={expenses} baseCurrency={baseCurrency} />
+            
 
             {/* collapsible expenses */}
             <Card className={`${GLASS} overflow-hidden rounded-2xl p-0`}>
@@ -277,8 +285,15 @@ export default function Dashboard() {
 
       <Dialog open={openDialog === "savings"} onOpenChange={(o) => setOpenDialog(o ? "savings" : null)}>
         <DialogContent className={DIALOG}>
-          <DialogTitle className="sr-only">Savings</DialogTitle>
-          <Savings expenses={expenses} />
+          <DialogTitle className="sr-only">Savings &amp; goals</DialogTitle>
+          <Goals />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={openDialog === "income"} onOpenChange={(o) => setOpenDialog(o ? "income" : null)}>
+        <DialogContent className={DIALOG}>
+          <DialogTitle className="sr-only">Add income</DialogTitle>
+          <IncomeForm onDone={() => setLedgerReload((k) => k + 1)} />
         </DialogContent>
       </Dialog>
 

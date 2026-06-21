@@ -10,6 +10,7 @@ import ocr
 import fx
 import ai
 import os
+import ledger
 
 Base.metadata.create_all(bind=engine)
 
@@ -60,6 +61,12 @@ class UserUpdateRequest(BaseModel):
     occupation: Optional[str] = None
     monthly_income: Optional[float] = None
     goals: Optional[str] = None
+    feature_essential_tagging: Optional[bool] = None
+    feature_pace_tracking: Optional[bool] = None
+    feature_pay_yourself_first: Optional[bool] = None
+    feature_priority_waterfall: Optional[bool] = None
+    feature_proportional_allocation: Optional[bool] = None
+    pyf_percent: Optional[float] = None
 
 
 @app.get("/health")
@@ -102,6 +109,12 @@ def _user_payload(u: models.User):
         "occupation": u.occupation,
         "monthly_income": u.monthly_income,
         "goals": u.goals or "",
+        "feature_essential_tagging": bool(u.feature_essential_tagging) if u.feature_essential_tagging is not None else True,
+        "feature_pace_tracking": bool(u.feature_pace_tracking) if u.feature_pace_tracking is not None else True,
+        "feature_pay_yourself_first": bool(u.feature_pay_yourself_first) if u.feature_pay_yourself_first is not None else True,
+        "feature_priority_waterfall": bool(u.feature_priority_waterfall) if u.feature_priority_waterfall is not None else True,
+        "feature_proportional_allocation": bool(u.feature_proportional_allocation) if u.feature_proportional_allocation is not None else True,
+        "pyf_percent": u.pyf_percent,
     }
 
 
@@ -117,7 +130,11 @@ def update_me(
     current_user: models.User = Depends(auth.get_current_user)
 ):
     data = body.model_dump(exclude_unset=True) if hasattr(body, "model_dump") else body.dict(exclude_unset=True)
-    for field in ("display_name", "avatar", "primary_currency", "monthly_budget", "occupation", "monthly_income", "goals"):
+    for field in ("display_name", "avatar", "primary_currency", "monthly_budget",
+                  "occupation", "monthly_income", "goals",
+                  "feature_essential_tagging", "feature_pace_tracking",
+                  "feature_pay_yourself_first", "feature_priority_waterfall",
+                  "feature_proportional_allocation", "pyf_percent"):
         if field in data:
             setattr(current_user, field, data[field])
     db.commit()
@@ -416,3 +433,292 @@ def delete_saving(
     db.commit()
     return {"ok": True, "id": txn_id}
 
+class GoalRequest(BaseModel):
+    name: str
+    target_amount: Optional[float] = None
+    deadline: Optional[str] = None
+    priority: Optional[int] = 0
+    is_emergency: Optional[bool] = False
+
+
+@app.get("/accounts")
+def get_accounts(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    return {
+        "accounts": ledger.list_accounts(db, current_user),
+        "net_worth": ledger.net_worth(db, current_user),
+        "currency": current_user.primary_currency or "SGD",
+    }
+
+
+@app.post("/accounts")
+def create_goal(body: GoalRequest, db: Session = Depends(get_db),
+                current_user: models.User = Depends(auth.get_current_user)):
+    acc = models.Account(
+        user_id=current_user.id, type="goal", name=body.name,
+        target_amount=body.target_amount, deadline=body.deadline,
+        priority=body.priority or 0, is_emergency=bool(body.is_emergency),
+    )
+    db.add(acc)
+    db.commit()
+    db.refresh(acc)
+    return acc
+
+
+@app.put("/accounts/{account_id}")
+def update_goal(account_id: str, body: GoalRequest, db: Session = Depends(get_db),
+                current_user: models.User = Depends(auth.get_current_user)):
+    acc = db.query(models.Account).filter(
+        models.Account.id == account_id,
+        models.Account.user_id == current_user.id,
+        models.Account.type == "goal",
+    ).first()
+    if not acc:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    acc.name = body.name
+    acc.target_amount = body.target_amount
+    acc.deadline = body.deadline
+    acc.priority = body.priority or 0
+    acc.is_emergency = bool(body.is_emergency)
+    db.commit()
+    db.refresh(acc)
+    return acc
+
+
+@app.delete("/accounts/{account_id}")
+def archive_goal(account_id: str, db: Session = Depends(get_db),
+                 current_user: models.User = Depends(auth.get_current_user)):
+    acc = db.query(models.Account).filter(
+        models.Account.id == account_id,
+        models.Account.user_id == current_user.id,
+        models.Account.type == "goal",
+    ).first()
+    if not acc:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    bal = ledger.account_balances(db, current_user.id).get(acc.id, 0.0)
+    if round(bal, 2) != 0:
+        raise HTTPException(status_code=400, detail="Empty the goal before deleting it (move its balance first).")
+    acc.archived = True
+    db.commit()
+    return {"ok": True, "id": account_id}
+
+
+@app.get("/ledger/cashflow")
+def ledger_cashflow(month: Optional[str] = None, db: Session = Depends(get_db),
+                    current_user: models.User = Depends(auth.get_current_user)):
+    return ledger.cashflow(db, current_user, month)
+
+class LedgerExpenseRequest(BaseModel):
+    amount: float
+    merchant: Optional[str] = ""
+    date: Optional[str] = None
+    category: Optional[str] = "Uncategorized"
+    currency: Optional[str] = None
+    from_account_id: Optional[str] = None    # None = Spending; or a goal id (paid from savings)
+    note: Optional[str] = None
+    raw_ocr_text: Optional[str] = ""
+    parsed_ok: Optional[bool] = True
+
+
+class LedgerIncomeRequest(BaseModel):
+    amount: float
+    source: Optional[str] = ""
+    date: Optional[str] = None
+    currency: Optional[str] = None
+
+
+class AllocateRequest(BaseModel):
+    amount: float
+    currency: Optional[str] = None
+    source: Optional[str] = "surplus"        # 'surplus' (from Spending) | 'external' (from World)
+    strategy: Optional[str] = "manual"       # 'manual' | 'waterfall' | 'proportional' | 'even'
+    splits: Optional[list] = None            # manual: [{"goal_id": "...", "amount": 123}]
+    date: Optional[str] = None
+    note: Optional[str] = None
+
+
+class WithdrawRequest(BaseModel):
+    goal_id: str
+    amount: float
+    to: Optional[str] = "spending"           # 'spending' (back to spendable) | 'world' (spent directly)
+    date: Optional[str] = None
+    note: Optional[str] = None
+    currency: Optional[str] = None
+
+
+def _own_account(db, user, account_id):
+    return db.query(models.Account).filter(
+        models.Account.id == account_id, models.Account.user_id == user.id
+    ).first()
+
+
+@app.post("/ledger/expense")
+def ledger_expense(body: LedgerExpenseRequest, db: Session = Depends(get_db),
+                   current_user: models.User = Depends(auth.get_current_user)):
+    spend = ledger.spending_account(db, current_user.id)
+    if not spend:
+        raise HTTPException(status_code=400, detail="No spending account — run the ledger backfill.")
+    frm = body.from_account_id or spend.id
+    if not _own_account(db, current_user, frm):
+        raise HTTPException(status_code=400, detail="Invalid source account")
+    e = ledger.post_entry(
+        db, current_user, amount=body.amount, currency=body.currency,
+        from_account_id=frm, to_account_id=None, date=body.date,
+        category=body.category, counterparty=body.merchant, note=body.note,
+        raw_ocr_text=body.raw_ocr_text, parsed_ok=body.parsed_ok,
+    )
+    db.commit()
+    db.refresh(e)
+    return e
+
+
+@app.post("/ledger/income")
+def ledger_income(body: LedgerIncomeRequest, db: Session = Depends(get_db),
+                  current_user: models.User = Depends(auth.get_current_user)):
+    spend = ledger.spending_account(db, current_user.id)
+    if not spend:
+        raise HTTPException(status_code=400, detail="No spending account — run the ledger backfill.")
+    e = ledger.post_entry(
+        db, current_user, amount=body.amount, currency=body.currency,
+        from_account_id=None, to_account_id=spend.id, date=body.date,
+        counterparty=body.source,
+    )
+    db.commit()
+    db.refresh(e)
+    # pay-yourself-first: suggest (not force) how much to move to savings now
+    pyf = None
+    if current_user.feature_pay_yourself_first and current_user.pyf_percent:
+        base = current_user.primary_currency or "SGD"
+        conv = fx.convert_to_base(amount=body.amount, currency=body.currency or base,
+                                  base_currency=base, receipt_date_str=body.date)
+        pyf = round(conv["amount_base"] * (current_user.pyf_percent / 100.0), 2)
+    return {"id": e.id, "pay_yourself_first_suggested": pyf}
+
+
+@app.post("/ledger/allocate")
+def ledger_allocate(body: AllocateRequest, db: Session = Depends(get_db),
+                    current_user: models.User = Depends(auth.get_current_user)):
+    spend = ledger.spending_account(db, current_user.id)
+    base = current_user.primary_currency or "SGD"
+    # surplus comes out of Spending; external money comes from the World (None)
+    frm = (spend.id if spend else None) if body.source != "external" else None
+    if body.source != "external" and not spend:
+        raise HTTPException(status_code=400, detail="No spending account")
+
+    if body.strategy == "manual":
+        if not body.splits:
+            raise HTTPException(status_code=400, detail="Provide splits for a manual allocation")
+        pairs = [(s["goal_id"], float(s["amount"])) for s in body.splits]
+        currency = body.currency or base
+    else:
+        conv = fx.convert_to_base(amount=body.amount, currency=body.currency or base,
+                                  base_currency=base, receipt_date_str=body.date)
+        goals = [a for a in ledger.list_accounts(db, current_user) if a["type"] == "goal"]
+        pairs = ledger.allocate(conv["amount_base"], body.strategy, goals)
+        currency = base
+
+    if not pairs:
+        raise HTTPException(status_code=400, detail="Nothing to allocate — do you have any goals?")
+
+    batch = models.gen_uuid()
+    result = []
+    for goal_id, amt in pairs:
+        g = _own_account(db, current_user, goal_id)
+        if not g or g.type != "goal":
+            raise HTTPException(status_code=400, detail=f"Invalid goal: {goal_id}")
+        ledger.post_entry(db, current_user, amount=amt, currency=currency,
+                          from_account_id=frm, to_account_id=goal_id, date=body.date,
+                          note=body.note, allocation_strategy=body.strategy, batch_id=batch)
+        result.append({"goal_id": goal_id, "amount": amt})
+    db.commit()
+    return {"ok": True, "batch_id": batch, "source": body.source, "strategy": body.strategy, "allocations": result}
+
+
+@app.post("/ledger/withdraw")
+def ledger_withdraw(body: WithdrawRequest, db: Session = Depends(get_db),
+                    current_user: models.User = Depends(auth.get_current_user)):
+    goal = _own_account(db, current_user, body.goal_id)
+    if not goal or goal.type != "goal":
+        raise HTTPException(status_code=404, detail="Goal not found")
+    spend = ledger.spending_account(db, current_user.id)
+    to_id = None if body.to == "world" else (spend.id if spend else None)
+    e = ledger.post_entry(db, current_user, amount=body.amount, currency=body.currency,
+                          from_account_id=goal.id, to_account_id=to_id,
+                          date=body.date, note=body.note)
+    db.commit()
+    db.refresh(e)
+    return e
+
+
+@app.get("/ledger/entries")
+def ledger_entries(limit: int = 200, db: Session = Depends(get_db),
+                   current_user: models.User = Depends(auth.get_current_user)):
+    names = {a.id: a.name for a in db.query(models.Account).filter(
+        models.Account.user_id == current_user.id).all()}
+    rows = db.query(models.LedgerEntry).filter(
+        models.LedgerEntry.user_id == current_user.id
+    ).order_by(models.LedgerEntry.created_at.desc()).limit(limit).all()
+    out = []
+    for e in rows:
+        kind = "income" if e.from_account_id is None else ("expense" if e.to_account_id is None else "transfer")
+        out.append({
+            "id": e.id, "kind": kind, "date": e.date or e.fx_date,
+            "amount": e.amount, "currency": e.currency, "amount_base": e.amount_base,
+            "category": e.category, "counterparty": e.counterparty, "note": e.note,
+            "from_account_id": e.from_account_id, "to_account_id": e.to_account_id,
+            "from": names.get(e.from_account_id), "to": names.get(e.to_account_id),
+        })
+    return {"entries": out}
+
+
+@app.delete("/ledger/entries/{entry_id}")
+def delete_entry(entry_id: str, db: Session = Depends(get_db),
+                 current_user: models.User = Depends(auth.get_current_user)):
+    e = db.query(models.LedgerEntry).filter(
+        models.LedgerEntry.id == entry_id, models.LedgerEntry.user_id == current_user.id
+    ).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    db.delete(e)
+    db.commit()
+    return {"ok": True, "id": entry_id}
+
+class LedgerEntryUpdate(BaseModel):
+    amount: Optional[float] = None
+    merchant: Optional[str] = None
+    date: Optional[str] = None
+    category: Optional[str] = None
+    currency: Optional[str] = None
+    from_account_id: Optional[str] = None
+    note: Optional[str] = None
+
+
+@app.put("/ledger/entries/{entry_id}")
+def update_entry(entry_id: str, body: LedgerEntryUpdate, db: Session = Depends(get_db),
+                 current_user: models.User = Depends(auth.get_current_user)):
+    e = db.query(models.LedgerEntry).filter(
+        models.LedgerEntry.id == entry_id, models.LedgerEntry.user_id == current_user.id
+    ).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    base = current_user.primary_currency or "SGD"
+    if body.amount is not None or body.currency is not None or body.date is not None:
+        amount = body.amount if body.amount is not None else e.amount
+        currency = body.currency or e.currency or base
+        date = body.date if body.date is not None else e.date
+        conv = fx.convert_to_base(amount=amount, currency=currency, base_currency=base, receipt_date_str=date)
+        e.amount, e.currency, e.date = amount, currency, date
+        e.amount_base = conv["amount_base"]
+        e.base_currency = conv["base_currency"]
+        e.fx_rate = conv["fx_rate"]
+        e.fx_date = conv["fx_date"]
+    if body.merchant is not None:
+        e.counterparty = body.merchant
+    if body.category is not None:
+        e.category = body.category
+    if body.from_account_id is not None:
+        e.from_account_id = body.from_account_id
+    if body.note is not None:
+        e.note = body.note
+    db.commit()
+    db.refresh(e)
+    return e
