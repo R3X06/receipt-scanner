@@ -18,14 +18,15 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     primary_currency = Column(String, default="SGD")
     display_name = Column(String, nullable=True)
-    avatar = Column(String, nullable=True)            # emoji string, or empty = initials
+    avatar = Column(String, nullable=True)
     monthly_budget = Column(Float, nullable=True)
-    occupation = Column(String, nullable=True)        # 'full_time' | 'part_time' | 'student'
+    occupation = Column(String, nullable=True)
     monthly_income = Column(Float, nullable=True)
     goals = Column(TEXT, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     expenses = relationship("Expense", back_populates="owner")
+    savings = relationship("SavingsTransaction", back_populates="owner")
 
 
 class Expense(Base):
@@ -47,3 +48,22 @@ class Expense(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship("User", back_populates="expenses")
+
+
+class SavingsTransaction(Base):
+    __tablename__ = "savings_transactions"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    direction = Column(String, nullable=False)   # 'in' = deposit, 'out' = withdrawal
+    amount = Column(Float, nullable=False)        # original amount, in `currency`
+    currency = Column(String)                     # original currency
+    amount_base = Column(Float)                   # converted to the user's base currency
+    base_currency = Column(String)
+    fx_rate = Column(Float)
+    fx_date = Column(String)
+    note = Column(String, default="")
+    date = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    owner = relationship("User", back_populates="savings")

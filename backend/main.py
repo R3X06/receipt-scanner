@@ -327,3 +327,89 @@ def ai_extract(
 ):
     return ai.extract_fields(body.raw_text)
 
+class SavingsRequest(BaseModel):
+    direction: str                 # 'in' | 'out'
+    amount: float
+    currency: Optional[str] = None
+    note: Optional[str] = ""
+    date: Optional[str] = None
+
+
+@app.post("/savings")
+def create_saving(
+    body: SavingsRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    if body.direction not in ("in", "out"):
+        raise HTTPException(status_code=400, detail="direction must be 'in' or 'out'")
+    if body.amount is None or body.amount <= 0:
+        raise HTTPException(status_code=400, detail="amount must be positive")
+
+    base_currency = current_user.primary_currency or fx.DEFAULT_BASE_CURRENCY
+    currency = body.currency or base_currency
+    conversion = fx.convert_to_base(
+        amount=body.amount,
+        currency=currency,
+        base_currency=base_currency,
+        receipt_date_str=body.date,
+    )
+
+    txn = models.SavingsTransaction(
+        user_id=current_user.id,
+        direction=body.direction,
+        amount=body.amount,
+        currency=currency,
+        amount_base=conversion["amount_base"],
+        base_currency=conversion["base_currency"],
+        fx_rate=conversion["fx_rate"],
+        fx_date=conversion["fx_date"],
+        note=body.note or "",
+        date=body.date or "",
+    )
+    db.add(txn)
+    db.commit()
+    db.refresh(txn)
+    return txn
+
+
+@app.get("/savings")
+def list_savings(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    txns = db.query(models.SavingsTransaction).filter(
+        models.SavingsTransaction.user_id == current_user.id
+    ).order_by(models.SavingsTransaction.created_at.desc()).all()
+
+    def base_amt(t):
+        return t.amount_base if t.amount_base is not None else t.amount
+
+    total_in = sum(base_amt(t) for t in txns if t.direction == "in")
+    total_out = sum(base_amt(t) for t in txns if t.direction == "out")
+
+    return {
+        "transactions": txns,
+        "balance": round(total_in - total_out, 2),
+        "total_in": round(total_in, 2),
+        "total_out": round(total_out, 2),
+        "currency": current_user.primary_currency or "SGD",
+    }
+
+
+@app.delete("/savings/{txn_id}")
+def delete_saving(
+    txn_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    txn = db.query(models.SavingsTransaction).filter(
+        models.SavingsTransaction.id == txn_id,
+        models.SavingsTransaction.user_id == current_user.id,
+    ).first()
+    if not txn:
+        raise HTTPException(status_code=404, detail="Savings transaction not found")
+    db.delete(txn)
+    db.commit()
+    return {"ok": True, "id": txn_id}
+

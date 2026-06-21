@@ -11,6 +11,10 @@ STATEMENTS = [
     "ALTER TABLE users ADD COLUMN occupation VARCHAR",
     "ALTER TABLE users ADD COLUMN monthly_income FLOAT",
     "ALTER TABLE users ADD COLUMN goals TEXT",
+    "ALTER TABLE savings_transactions ADD COLUMN amount_base FLOAT",
+    "ALTER TABLE savings_transactions ADD COLUMN base_currency VARCHAR",
+    "ALTER TABLE savings_transactions ADD COLUMN fx_rate FLOAT",
+    "ALTER TABLE savings_transactions ADD COLUMN fx_date VARCHAR",
 ]
 
 

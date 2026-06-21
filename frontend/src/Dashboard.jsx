@@ -10,6 +10,7 @@ import Insights from "./Insights";
 import ProfileCard from "./ProfileCard";
 import ExpenseList from "./ExpenseList";
 import Settings from "./Settings";
+import Savings from "./Savings";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,7 @@ import {
   SlidersHorizontal,
   ChevronDown,
   Wallet,
+  PiggyBank,
 } from "lucide-react";
 
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
@@ -94,6 +96,7 @@ export default function Dashboard() {
     { key: "add", label: "Add", icon: Plus },
     { key: "ask", label: "Ask AI", icon: Sparkles },
     { key: "insights", label: "Insights", icon: Lightbulb },
+    { key: "savings", label: "Savings", icon: PiggyBank },
   ];
 
   const isEmpty = !loading && expenses.length === 0 && !hasFilter;
@@ -177,7 +180,7 @@ export default function Dashboard() {
             )}
 
             {/* action buttons */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
               {actions.map(({ key, label, icon: Icon }) => (
                 <Button
                   key={key}
@@ -269,6 +272,13 @@ export default function Dashboard() {
         <DialogContent className={DIALOG}>
           <DialogTitle className="sr-only">Ask AI</DialogTitle>
           <AskAI />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={openDialog === "savings"} onOpenChange={(o) => setOpenDialog(o ? "savings" : null)}>
+        <DialogContent className={DIALOG}>
+          <DialogTitle className="sr-only">Savings</DialogTitle>
+          <Savings expenses={expenses} />
         </DialogContent>
       </Dialog>
 

@@ -149,3 +149,36 @@ export async function updateMe(token, payload) {
   if (!res.ok) throw new Error(data.detail || "Failed to update profile");
   return data;
 }
+
+export async function getSavings(token) {
+  const res = await fetch(`${API_URL}/savings`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to fetch savings");
+  return data;
+}
+
+export async function addSaving(token, payload) {
+  const res = await fetch(`${API_URL}/savings`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to add savings entry");
+  return data;
+}
+
+export async function deleteSaving(token, id) {
+  const res = await fetch(`${API_URL}/savings/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to delete savings entry");
+  return data;
+}
