@@ -15,8 +15,14 @@ STATEMENTS = [
     "ALTER TABLE savings_transactions ADD COLUMN base_currency VARCHAR",
     "ALTER TABLE savings_transactions ADD COLUMN fx_rate FLOAT",
     "ALTER TABLE savings_transactions ADD COLUMN fx_date VARCHAR",
+    "ALTER TABLE expenses ADD COLUMN funding_source VARCHAR",
+    "ALTER TABLE users ADD COLUMN feature_essential_tagging BOOLEAN",
+    "ALTER TABLE users ADD COLUMN feature_pace_tracking BOOLEAN",
+    "ALTER TABLE users ADD COLUMN feature_pay_yourself_first BOOLEAN",
+    "ALTER TABLE users ADD COLUMN feature_priority_waterfall BOOLEAN",
+    "ALTER TABLE users ADD COLUMN feature_proportional_allocation BOOLEAN",
+    "ALTER TABLE users ADD COLUMN pyf_percent FLOAT",
 ]
-
 
 def run():
     for stmt in STATEMENTS:

@@ -24,6 +24,12 @@ const CATEGORY_COLORS = {
   Other: "#8A97A6",
 };
 
+const FUNDING_SOURCES = [
+  { value: "unaccounted", label: "Unaccounted" },
+  { value: "income", label: "From income" },
+  { value: "savings", label: "From savings" },
+];
+
 function ExpenseRow({ expense, onUpdated, onDeleted }) {
   const { token } = useAuth();
   const [editing, setEditing] = useState(false);
@@ -36,6 +42,7 @@ function ExpenseRow({ expense, onUpdated, onDeleted }) {
     currency: expense.currency || "SGD",
     date: expense.date || "",
     category: CATEGORIES.includes(expense.category) ? expense.category : "Other",
+    funding_source: expense.funding_source || "unaccounted",
   });
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -53,6 +60,7 @@ function ExpenseRow({ expense, onUpdated, onDeleted }) {
         date: form.date,
         category: form.category,
         currency: form.currency,
+        funding_source: form.funding_source,
       });
       onUpdated(updated);
       setEditing(false);
@@ -95,13 +103,9 @@ function ExpenseRow({ expense, onUpdated, onDeleted }) {
               placeholder="Amount"
             />
             <Select value={form.currency} onValueChange={(v) => setField("currency", v)}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {CURRENCIES.map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
+                {CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -112,15 +116,19 @@ function ExpenseRow({ expense, onUpdated, onDeleted }) {
             placeholder="Date (as printed)"
           />
           <Select value={form.category} onValueChange={(v) => setField("category", v)}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
             <SelectContent>
-              {CATEGORIES.map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
+              {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
             </SelectContent>
           </Select>
+          <div className="sm:col-span-2">
+            <Select value={form.funding_source} onValueChange={(v) => setField("funding_source", v)}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {FUNDING_SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <div className="flex gap-2">
@@ -149,7 +157,15 @@ function ExpenseRow({ expense, onUpdated, onDeleted }) {
           style={{ background: CATEGORY_COLORS[expense.category] || "#8A97A6" }}
         />
         <div className="min-w-0">
-          <p className="truncate font-medium">{expense.merchant}</p>
+          <div className="flex items-center gap-2">
+            <p className="truncate font-medium">{expense.merchant}</p>
+            {expense.funding_source === "savings" && (
+              <span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">savings</span>
+            )}
+            {expense.funding_source === "income" && (
+              <span className="shrink-0 rounded-full border border-white/10 px-1.5 py-0.5 text-[10px] text-muted-foreground">income</span>
+            )}
+          </div>
           <p className="truncate text-sm text-muted-foreground">
             {expense.category} · {expense.date}
           </p>
@@ -163,23 +179,19 @@ function ExpenseRow({ expense, onUpdated, onDeleted }) {
         {confirmDelete ? (
           <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground">Delete?</span>
-            <button onClick={remove} disabled={busy} aria-label="Confirm delete"
-              className="text-destructive hover:opacity-80">
+            <button onClick={remove} disabled={busy} aria-label="Confirm delete" className="text-destructive hover:opacity-80">
               <Check className="h-4 w-4" />
             </button>
-            <button onClick={() => setConfirmDelete(false)} disabled={busy} aria-label="Cancel delete"
-              className="text-muted-foreground hover:text-foreground">
+            <button onClick={() => setConfirmDelete(false)} disabled={busy} aria-label="Cancel delete" className="text-muted-foreground hover:text-foreground">
               <X className="h-4 w-4" />
             </button>
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <button onClick={() => setEditing(true)} aria-label="Edit expense"
-              className="text-muted-foreground hover:text-foreground">
+            <button onClick={() => setEditing(true)} aria-label="Edit expense" className="text-muted-foreground hover:text-foreground">
               <Pencil className="h-4 w-4" />
             </button>
-            <button onClick={() => setConfirmDelete(true)} aria-label="Delete expense"
-              className="text-muted-foreground hover:text-destructive">
+            <button onClick={() => setConfirmDelete(true)} aria-label="Delete expense" className="text-muted-foreground hover:text-destructive">
               <Trash2 className="h-4 w-4" />
             </button>
           </div>

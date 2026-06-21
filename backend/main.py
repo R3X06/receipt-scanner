@@ -47,6 +47,7 @@ class ExpenseRequest(BaseModel):
     currency: Optional[str] = "SGD"
     raw_ocr_text: Optional[str] = ""
     parsed_ok: Optional[bool] = True
+    funding_source: Optional[str] = "unaccounted"
 
 class AskRequest(BaseModel):
     question: str
@@ -150,7 +151,8 @@ def create_expense(
         fx_rate=conversion["fx_rate"],
         fx_date=conversion["fx_date"],
         raw_ocr_text=body.raw_ocr_text,
-        parsed_ok=body.parsed_ok
+        parsed_ok=body.parsed_ok,
+        funding_source=body.funding_source or "unaccounted",
     )
     db.add(expense)
     db.commit()
@@ -188,6 +190,7 @@ def update_expense(
     expense.base_currency = conversion["base_currency"]
     expense.fx_rate = conversion["fx_rate"]
     expense.fx_date = conversion["fx_date"]
+    expense.funding_source = body.funding_source or "unaccounted"
     # raw_ocr_text / parsed_ok deliberately preserved — keep the scan provenance
 
     db.commit()

@@ -47,6 +47,10 @@ export default function Savings({ expenses = [] }) {
   const [currency, setCurrency] = useState(baseCurrency);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const fromSavings = expenses.filter((e) => e.funding_source === "savings").reduce((s, e) => s + baseAmount(e), 0);
+  const fromIncome = expenses.filter((e) => e.funding_source === "income").reduce((s, e) => s + baseAmount(e), 0);
+  const unaccounted = expenses.filter((e) => !e.funding_source || e.funding_source === "unaccounted").reduce((s, e) => s + baseAmount(e), 0);
+  const withdrawnUnspent = (data?.total_out ?? 0) - fromSavings;
 
   async function load() {
     setLoading(true);
@@ -149,6 +153,28 @@ export default function Savings({ expenses = [] }) {
                 <p className="text-xs text-muted-foreground">of monthly income</p>
               </div>
             )}
+          </div>
+        )}
+
+        {expenses.length > 0 && (
+          <div className="space-y-1.5 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <p className="text-xs text-muted-foreground">Spending by source</p>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">From savings</span>
+              <span className="tabular-nums">{baseCurrency} {fromSavings.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">From income</span>
+              <span className="tabular-nums">{baseCurrency} {fromIncome.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Unaccounted</span>
+              <span className="tabular-nums">{baseCurrency} {unaccounted.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between border-t border-white/5 pt-1.5 text-sm">
+              <span className="text-muted-foreground">Withdrawn, not yet spent</span>
+              <span className="font-medium tabular-nums">{baseCurrency} {withdrawnUnspent.toFixed(2)}</span>
+            </div>
           </div>
         )}
 

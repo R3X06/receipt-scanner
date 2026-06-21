@@ -16,6 +16,12 @@ import {
 
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 
+const FUNDING_SOURCES = [
+  { value: "unaccounted", label: "Unaccounted" },
+  { value: "income", label: "From income" },
+  { value: "savings", label: "From savings" },
+];
+
 export default function ExpenseForm({ onExpenseAdded }) {
   const { token } = useAuth();
   const [amount, setAmount] = useState("");
@@ -23,6 +29,7 @@ export default function ExpenseForm({ onExpenseAdded }) {
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [category, setCategory] = useState("Other");
   const [currency, setCurrency] = useState("SGD");
+  const [fundingSource, setFundingSource] = useState("unaccounted");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -37,11 +44,13 @@ export default function ExpenseForm({ onExpenseAdded }) {
         date,
         category,
         currency,
+        funding_source: fundingSource,
       });
       onExpenseAdded(expense);
       setAmount("");
       setMerchant("");
       setDate(new Date().toISOString().split("T")[0]);
+      setFundingSource("unaccounted");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -65,15 +74,9 @@ export default function ExpenseForm({ onExpenseAdded }) {
               required
             />
             <Select value={currency} onValueChange={setCurrency}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {CURRENCIES.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
+                {CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
               </SelectContent>
             </Select>
             <Input
@@ -92,15 +95,17 @@ export default function ExpenseForm({ onExpenseAdded }) {
             />
             <div className="col-span-2">
               <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {CATEGORIES.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c}
-                    </SelectItem>
-                  ))}
+                  {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2">
+              <Select value={fundingSource} onValueChange={setFundingSource}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {FUNDING_SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
