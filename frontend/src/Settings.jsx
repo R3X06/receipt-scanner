@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { updateMe, getCategories, updateCategories } from "./api";
 
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 
@@ -41,6 +42,57 @@ function ToggleRow({ label, hint, checked, onChange }) {
           }`}
         />
       </button>
+    </div>
+  );
+}
+
+function CategoryTags({ token }) {
+  const [cats, setCats] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    getCategories(token).then((d) => setCats(d.categories || [])).catch(() => {});
+  }, [token]);
+
+  const setKind = (name, kind) =>
+    setCats((cs) => cs.map((c) => (c.name === name ? { ...c, kind } : c)));
+
+  async function save() {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await updateCategories(token, cats.map((c) => ({ name: c.name, kind: c.kind })));
+      setSaved(true);
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const opts = [["essential", "Essential"], ["discretionary", "Wants"], [null, "—"]];
+
+  return (
+    <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+      <p className="text-sm font-medium">Category types</p>
+      <p className="text-xs text-muted-foreground">Essentials set your emergency-fund coverage (months you could cover if income stopped).</p>
+      {cats.map((c) => (
+        <div key={c.name} className="flex items-center justify-between gap-2">
+          <span className="truncate text-sm">{c.name}</span>
+          <div className="flex shrink-0 gap-0.5 rounded-full border border-white/10 p-0.5">
+            {opts.map(([val, label]) => (
+              <button key={label} type="button" onClick={() => setKind(c.name, val)}
+                className={`rounded-full px-2 py-0.5 text-xs ${c.kind === val ? "bg-primary font-medium text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      <Button size="sm" onClick={save} disabled={saving} className="w-full">
+        {saving ? "Saving…" : saved ? "Saved ✓" : "Save category types"}
+      </Button>
     </div>
   );
 }
@@ -175,6 +227,8 @@ export default function Settings({ onClose }) {
           <ToggleRow label="Goal pace tracking" hint="Show 'need X/mo' on goals with deadlines" checked={form.feature_pace_tracking} onChange={(v) => setField("feature_pace_tracking", v)} />
           <ToggleRow label="Essential vs discretionary" hint="Tag categories for emergency-fund coverage" checked={form.feature_essential_tagging} onChange={(v) => setField("feature_essential_tagging", v)} />
         </div>
+
+        {form.feature_essential_tagging && <CategoryTags token={token} />}  
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 

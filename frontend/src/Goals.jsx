@@ -125,6 +125,10 @@ function GoalCard({ goal, base, token, onChange }) {
         </div>
       )}
 
+      {goal.is_emergency && goal.covers_months != null && (
+        <p className="mt-1 text-xs text-primary">Covers {goal.covers_months} months of essentials</p>
+      )}
+
       {withdrawing && (
         <div className="mt-2 flex gap-2">
           <Input type="number" step="0.01" min="0" placeholder={`Amount (${base})`} value={amt} onChange={(e) => setAmt(e.target.value)} className="h-8" />

@@ -16,6 +16,8 @@ Base.metadata.create_all(bind=engine)
 
 import migrate
 migrate.run()
+import backfill_ledger
+backfill_ledger.backfill()
 
 app = FastAPI()
 
@@ -86,6 +88,13 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+    db.add(models.Account(user_id=user.id, type="spending", name="Spending"))
+    for name, kind in {"Food & Drink": "essential", "Transport": "essential",
+                       "Utilities": "essential", "Health": "essential",
+                       "Shopping": "discretionary", "Entertainment": "discretionary",
+                       "Other": None, "Uncategorized": None}.items():
+        db.add(models.Category(user_id=user.id, name=name, kind=kind))
+    db.commit()
     token = auth.create_token({"sub": user.email})
     return {"access_token": token, "token_type": "bearer"}
 
@@ -734,3 +743,27 @@ def _ledger_expenses_for_ai(db, user):
         )
         for e in rows
     ]
+
+@app.get("/categories")
+def get_categories(db: Session = Depends(get_db),
+                   current_user: models.User = Depends(auth.get_current_user)):
+    cats = db.query(models.Category).filter(
+        models.Category.user_id == current_user.id).order_by(models.Category.name).all()
+    return {"categories": [{"id": c.id, "name": c.name, "kind": c.kind} for c in cats]}
+
+
+class CategoryUpdateRequest(BaseModel):
+    updates: list   # [{"name": "Food & Drink", "kind": "essential" | "discretionary" | null}]
+
+
+@app.put("/categories")
+def update_categories(body: CategoryUpdateRequest, db: Session = Depends(get_db),
+                      current_user: models.User = Depends(auth.get_current_user)):
+    by_name = {c.name: c for c in db.query(models.Category).filter(
+        models.Category.user_id == current_user.id).all()}
+    for u in body.updates:
+        c = by_name.get(u.get("name"))
+        if c:
+            c.kind = u.get("kind")
+    db.commit()
+    return {"ok": True}

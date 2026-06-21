@@ -277,3 +277,21 @@ export async function addLedgerIncome(token, payload) {
   if (!res.ok) throw new Error(data.detail || "Failed to add income");
   return data;
 }
+
+export async function getCategories(token) {
+  const res = await fetch(`${API_URL}/categories`, { headers: { Authorization: `Bearer ${token}` } });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to fetch categories");
+  return data;
+}
+
+export async function updateCategories(token, updates) {
+  const res = await fetch(`${API_URL}/categories`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ updates }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to update categories");
+  return data;
+}

@@ -67,7 +67,25 @@ def _months_until(deadline_iso):
     return max((d.year - now.year) * 12 + (d.month - now.month), 0)
 
 
-def account_view(user, account, balances):
+def essential_monthly_spend(db, user):
+    """Average monthly spend on 'essential'-tagged categories (the emergency-fund denominator)."""
+    kinds = {c.name: c.kind for c in db.query(models.Category).filter(
+        models.Category.user_id == user.id).all()}
+    rows = db.query(models.LedgerEntry).filter(
+        models.LedgerEntry.user_id == user.id,
+        models.LedgerEntry.to_account_id.is_(None),   # expenses
+    ).all()
+    by_month = {}
+    for e in rows:
+        if kinds.get(e.category) != "essential":
+            continue
+        d = e.fx_date or e.date or ""
+        if len(d) >= 7:
+            by_month[d[:7]] = by_month.get(d[:7], 0.0) + entry_base(e)
+    return (sum(by_month.values()) / len(by_month)) if by_month else 0.0
+
+
+def account_view(user, account, balances, essential_spend=None):
     bal = round(balances.get(account.id, 0.0), 2)
     data = {
         "id": account.id, "type": account.type, "name": account.name,
@@ -84,17 +102,20 @@ def account_view(user, account, balances):
         if months is not None and getattr(user, "feature_pace_tracking", True):
             data["months_left"] = months
             data["required_per_month"] = round(max(target - bal, 0.0) / months, 2) if months > 0 else round(max(target - bal, 0.0), 2)
+    if account.is_emergency and essential_spend and essential_spend > 0:
+        data["covers_months"] = round(bal / essential_spend, 1)
+        data["essential_monthly"] = round(essential_spend, 2)
     return data
 
 
 def list_accounts(db, user):
     balances = account_balances(db, user.id)
+    ess = essential_monthly_spend(db, user) if getattr(user, "feature_essential_tagging", True) else None
     accounts = db.query(models.Account).filter(
         models.Account.user_id == user.id,
         models.Account.archived == False,  # noqa: E712
     ).order_by(models.Account.priority).all()
-    return [account_view(user, a, balances) for a in accounts]
-
+    return [account_view(user, a, balances, ess) for a in accounts]
 
 def net_worth(db, user):
     return round(sum(account_balances(db, user.id).values()), 2)
