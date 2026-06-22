@@ -11,6 +11,7 @@ import fx
 import ai
 import os
 import ledger
+import types
 
 Base.metadata.create_all(bind=engine)
 
