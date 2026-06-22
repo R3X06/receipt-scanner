@@ -17,8 +17,8 @@ Base.metadata.create_all(bind=engine)
 
 import migrate
 migrate.run()
-import backfill_ledger
-backfill_ledger.backfill()
+#import backfill_ledger
+#backfill_ledger.backfill()
 
 app = FastAPI()
 
@@ -151,7 +151,7 @@ def update_me(
     db.refresh(current_user)
     return _user_payload(current_user)
 
-
+'''
 @app.post("/expenses")
 def create_expense(
     body: ExpenseRequest,
@@ -262,7 +262,7 @@ def get_expenses(
 
     expenses = query.order_by(models.Expense.created_at.desc()).all()
     return expenses
-
+'''
 
 @app.post("/ocr")
 async def scan_receipt(
@@ -360,7 +360,7 @@ class SavingsRequest(BaseModel):
     note: Optional[str] = ""
     date: Optional[str] = None
 
-
+'''
 @app.post("/savings")
 def create_saving(
     body: SavingsRequest,
@@ -439,13 +439,13 @@ def delete_saving(
     db.commit()
     return {"ok": True, "id": txn_id}
 
+'''
 class GoalRequest(BaseModel):
     name: str
     target_amount: Optional[float] = None
     deadline: Optional[str] = None
     priority: Optional[int] = 0
     is_emergency: Optional[bool] = False
-
 
 @app.get("/accounts")
 def get_accounts(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):

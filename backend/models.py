@@ -31,11 +31,12 @@ class User(Base):
     feature_proportional_allocation = Column(Boolean, default=True)
     pyf_percent = Column(Float, nullable=True)   # pay-yourself-first: % of logged income to auto-allocate
     created_at = Column(DateTime, default=datetime.utcnow)
-
+    '''
     # legacy (kept until cutover)
     expenses = relationship("Expense", back_populates="owner")
     savings = relationship("SavingsTransaction", back_populates="owner")
     income = relationship("IncomeTransaction", back_populates="owner")
+    '''
     # ledger
     accounts = relationship("Account", back_populates="owner")
     ledger_entries = relationship("LedgerEntry", back_populates="owner")
@@ -99,7 +100,7 @@ class Category(Base):
 
     owner = relationship("User", back_populates="categories")
 
-
+'''
 # ============== LEGACY TABLES (read until cutover, dropped after) ==============
 
 class Expense(Base):
@@ -159,3 +160,5 @@ class IncomeTransaction(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship("User", back_populates="income")
+
+    '''

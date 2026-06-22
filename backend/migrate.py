@@ -22,6 +22,9 @@ STATEMENTS = [
     "ALTER TABLE users ADD COLUMN feature_priority_waterfall BOOLEAN",
     "ALTER TABLE users ADD COLUMN feature_proportional_allocation BOOLEAN",
     "ALTER TABLE users ADD COLUMN pyf_percent FLOAT",
+    "DROP TABLE IF EXISTS expenses",
+    "DROP TABLE IF EXISTS savings_transactions",
+    "DROP TABLE IF EXISTS income_transactions",
 ]
 
 def run():
