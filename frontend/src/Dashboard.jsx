@@ -13,6 +13,7 @@ import Settings from "./Settings";
 import Savings from "./Savings";
 import Goals from "./Goals";
 import CashFlowCard from "./CashFlowCard";
+import ReconciliationCard from "./ReconciliationCard";
 import IncomeForm from "./IncomeForm";
 
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ import {
   ChevronDown,
   Wallet,
   PiggyBank,
+  Target,
 } from "lucide-react";
 
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
@@ -99,9 +101,11 @@ export default function Dashboard() {
   const actions = [
     { key: "scan", label: "Scan", icon: ScanLine },
     { key: "add", label: "Add", icon: Plus },
+    { key: "income", label: "Income", icon: Wallet },
     { key: "ask", label: "Ask AI", icon: Sparkles },
     { key: "insights", label: "Insights", icon: Lightbulb },
     { key: "savings", label: "Savings", icon: PiggyBank },
+    { key: "goals", label: "Goals", icon: Target },
   ];
 
   const isEmpty = !loading && expenses.length === 0 && !hasFilter;
@@ -185,7 +189,7 @@ export default function Dashboard() {
             )}
 
             {/* action buttons */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-7">
               {actions.map(({ key, label, icon: Icon }) => (
                 <Button
                   key={key}
@@ -200,6 +204,7 @@ export default function Dashboard() {
             </div>
 
             <CashFlowCard reloadKey={ledgerReload} />
+            <ReconciliationCard reloadKey={ledgerReload} onAddIncome={() => setOpenDialog("income")} onChange={() => setLedgerReload((k) => k + 1)} />
 
             {/* charts */}
             <Charts expenses={expenses} baseCurrency={baseCurrency} />
@@ -285,8 +290,8 @@ export default function Dashboard() {
 
       <Dialog open={openDialog === "savings"} onOpenChange={(o) => setOpenDialog(o ? "savings" : null)}>
         <DialogContent className={DIALOG}>
-          <DialogTitle className="sr-only">Savings &amp; goals</DialogTitle>
-          <Goals />
+          <DialogTitle className="sr-only">Savings</DialogTitle>
+          <Savings onChange={() => setLedgerReload((k) => k + 1)} />
         </DialogContent>
       </Dialog>
 
@@ -294,6 +299,13 @@ export default function Dashboard() {
         <DialogContent className={DIALOG}>
           <DialogTitle className="sr-only">Add income</DialogTitle>
           <IncomeForm onDone={() => setLedgerReload((k) => k + 1)} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={openDialog === "goals"} onOpenChange={(o) => setOpenDialog(o ? "goals" : null)}>
+        <DialogContent className={DIALOG}>
+          <DialogTitle className="sr-only">Goals</DialogTitle>
+          <Goals onChange={() => setLedgerReload((k) => k + 1)} />
         </DialogContent>
       </Dialog>
 

@@ -28,7 +28,7 @@ export default function CashFlowCard({ reloadKey }) {
           {rate != null && <span className="text-xs text-muted-foreground">{rate}% saved</span>}
         </div>
         <div className="space-y-1.5 text-sm">
-          <Row label="Income" value={fmt(cf?.income)} valueClass="text-emerald-400" />
+          <Row label="Income" value={fmt(cf?.income)} valueClass="text-primary" />
           <Row label="Spending" value={fmt(cf?.spending)} />
           <div className="my-1 h-px bg-white/10" />
           <Row label="Surplus" value={fmt(surplus)} strong valueClass={surplus < 0 ? "text-destructive" : ""} />

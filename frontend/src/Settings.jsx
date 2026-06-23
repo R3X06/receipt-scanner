@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
 import { CURRENCIES } from "./constants";
-import { updateMe } from "./api";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -31,16 +31,11 @@ class User(Base):
     feature_proportional_allocation = Column(Boolean, default=True)
     pyf_percent = Column(Float, nullable=True)   # pay-yourself-first: % of logged income to auto-allocate
     created_at = Column(DateTime, default=datetime.utcnow)
-    '''
-    # legacy (kept until cutover)
-    expenses = relationship("Expense", back_populates="owner")
-    savings = relationship("SavingsTransaction", back_populates="owner")
-    income = relationship("IncomeTransaction", back_populates="owner")
-    '''
     # ledger
     accounts = relationship("Account", back_populates="owner")
     ledger_entries = relationship("LedgerEntry", back_populates="owner")
     categories = relationship("Category", back_populates="owner")
+    goal_configs = relationship("Goal", back_populates="owner")
 
 
 # ============== THE LEDGER (new foundation) ==============
@@ -50,12 +45,12 @@ class Account(Base):
 
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    type = Column(String, nullable=False)            # 'spending' | 'goal'
+    type = Column(String, nullable=False)            # 'spending' | 'savings' | 'goal'(legacy)
     name = Column(String, nullable=False)
-    target_amount = Column(Float, nullable=True)     # goals only
-    deadline = Column(String, nullable=True)         # goals only, ISO date
-    priority = Column(Integer, default=0)            # waterfall order (lower fills first)
-    is_emergency = Column(Boolean, default=False)    # marks the emergency fund
+    target_amount = Column(Float, nullable=True)     # legacy goal-account fields (unused for spending/savings)
+    deadline = Column(String, nullable=True)
+    priority = Column(Integer, default=0)
+    is_emergency = Column(Boolean, default=False)
     archived = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -67,7 +62,8 @@ class LedgerEntry(Base):
 
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    date = Column(String)                            # transaction date, ISO
+    date = Column(String)                            # transaction date, ISO (calendar day)
+    occurred_at = Column(DateTime, default=datetime.utcnow)  # precise event time; orders the running wallet
     amount = Column(Float, nullable=False)           # original
     currency = Column(String)
     amount_base = Column(Float)
@@ -77,8 +73,10 @@ class LedgerEntry(Base):
     # NULL on either side means "the World" — inflow if from is NULL, outflow if to is NULL
     from_account_id = Column(String, ForeignKey("accounts.id"), nullable=True)
     to_account_id = Column(String, ForeignKey("accounts.id"), nullable=True)
+    wallet_linked = Column(Boolean, default=True)    # expense draws the wallet & surplus when true; unlinked -> expense-only
+    inferred = Column(Boolean, default=False)        # non-real income (e.g. opening balance); excluded from income x expense
     category = Column(String, nullable=True)         # expenses
-    counterparty = Column(String, nullable=True)     # merchant (expense) / source (income)
+    counterparty = Column(String, nullable=True)     # merchant (expense) / origin (income)
     note = Column(String, nullable=True)
     raw_ocr_text = Column(TEXT, default="")
     parsed_ok = Column(Boolean, nullable=True)
@@ -100,65 +98,24 @@ class Category(Base):
 
     owner = relationship("User", back_populates="categories")
 
-'''
-# ============== LEGACY TABLES (read until cutover, dropped after) ==============
 
-class Expense(Base):
-    __tablename__ = "expenses"
-
-    id = Column(String, primary_key=True, default=gen_uuid)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    amount = Column(Float, nullable=False)
-    merchant = Column(String, default="Unknown")
-    date = Column(String)
-    category = Column(String, default="Uncategorized")
-    currency = Column(String, default="USD")
-    amount_base = Column(Float)
-    base_currency = Column(String)
-    fx_rate = Column(Float)
-    fx_date = Column(String)
-    raw_ocr_text = Column(TEXT, default="")
-    parsed_ok = Column(Boolean, default=False)
-    funding_source = Column(String, default="unaccounted")
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    owner = relationship("User", back_populates="expenses")
-
-
-class SavingsTransaction(Base):
-    __tablename__ = "savings_transactions"
+class Goal(Base):
+    """A goal is a *derived claim* over the savings balance, not an account.
+    It holds no money; its current allocation is recomputed from the savings
+    pool + these config fields. Forced goals reserve a fixed amount (senior);
+    algorithmic goals share the remainder via the chosen strategy (junior)."""
+    __tablename__ = "goals"
 
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    direction = Column(String, nullable=False)
-    amount = Column(Float, nullable=False)
-    currency = Column(String)
-    amount_base = Column(Float)
-    base_currency = Column(String)
-    fx_rate = Column(Float)
-    fx_date = Column(String)
-    note = Column(String, default="")
-    date = Column(String)
+    name = Column(String, nullable=False)
+    target_amount = Column(Float, nullable=True)        # optional goal size
+    deadline = Column(String, nullable=True)            # ISO date
+    priority = Column(Integer, default=0)               # lower = senior (filled first, cut last)
+    is_emergency = Column(Boolean, default=False)       # marks the emergency reserve
+    funding_type = Column(String, default="algorithmic")  # 'forced' | 'algorithmic'
+    forced_amount = Column(Float, nullable=True)        # reserved amount when funding_type == 'forced'
+    archived = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    owner = relationship("User", back_populates="savings")
-
-
-class IncomeTransaction(Base):
-    __tablename__ = "income_transactions"
-
-    id = Column(String, primary_key=True, default=gen_uuid)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    amount = Column(Float, nullable=False)
-    currency = Column(String)
-    amount_base = Column(Float)
-    base_currency = Column(String)
-    fx_rate = Column(Float)
-    fx_date = Column(String)
-    source = Column(String, default="")
-    date = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    owner = relationship("User", back_populates="income")
-
-    '''
+    owner = relationship("User", back_populates="goal_configs")

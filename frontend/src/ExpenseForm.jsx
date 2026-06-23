@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { createExpense, getAccounts } from "./api";
+import { useState } from "react";
+import { createExpense } from "./api";
 import { useAuth } from "./AuthContext";
 import { CATEGORIES, CURRENCIES } from "./constants";
 
@@ -10,47 +10,43 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 
+function nowLocal() {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+
 export default function ExpenseForm({ onExpenseAdded }) {
   const { token } = useAuth();
   const [amount, setAmount] = useState("");
   const [merchant, setMerchant] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [when, setWhen] = useState(nowLocal());
   const [category, setCategory] = useState("Other");
   const [currency, setCurrency] = useState("SGD");
-  const [accounts, setAccounts] = useState([]);
-  const [fromId, setFromId] = useState("");
+  const [walletLinked, setWalletLinked] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    getAccounts(token).then((d) => {
-      const accs = d.accounts || [];
-      setAccounts(accs);
-      const spending = accs.find((a) => a.type === "spending");
-      if (spending) setFromId(spending.id);
-    }).catch(() => {});
-  }, [token]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      const acc = accounts.find((a) => a.id === fromId);
+      const date = (when || "").split("T")[0];
       const expense = await createExpense(token, {
         amount: parseFloat(amount),
         merchant,
         date,
+        occurred_at: when,
         category,
         currency,
-        from_account_id: fromId || null,
-        from_type: acc?.type,
-        from_name: acc?.name,
+        wallet_linked: walletLinked,
       });
       onExpenseAdded(expense);
       setAmount("");
       setMerchant("");
-      setDate(new Date().toISOString().split("T")[0]);
+      setWhen(nowLocal());
+      setWalletLinked(true);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -70,26 +66,18 @@ export default function ExpenseForm({ onExpenseAdded }) {
               <SelectContent>{CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
             </Select>
             <Input type="text" placeholder="Merchant" value={merchant} onChange={(e) => setMerchant(e.target.value)} required />
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className="[&::-webkit-calendar-picker-indicator]:invert" />
+            <Input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} required className="[&::-webkit-calendar-picker-indicator]:invert" />
             <div className="col-span-2">
               <Select value={category} onValueChange={setCategory}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className="col-span-2">
-              <Select value={fromId} onValueChange={setFromId}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="Paid from" /></SelectTrigger>
-                <SelectContent>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.type === "spending" ? "Spending" : `Savings · ${a.name}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
+          <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+            <input type="checkbox" checked={!walletLinked} onChange={(e) => setWalletLinked(!e.target.checked)} className="mt-0.5 h-3.5 w-3.5 rounded border-white/20 bg-white/[0.04] accent-primary" />
+            <span>Paid from money I'm not tracking — keep it out of my wallet &amp; surplus (still counts in spending)</span>
+          </label>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" disabled={loading} className="w-full font-medium">
             {loading ? "Adding..." : "Add expense"}

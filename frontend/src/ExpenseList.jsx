@@ -1,12 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAuth } from "./AuthContext";
 import { CATEGORIES, CURRENCIES } from "./constants";
-import { updateExpense, deleteExpense, getAccounts } from "./api";
+import { updateExpense, deleteExpense, setWalletLink } from "./api";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Pencil, Trash2, Check, X } from "lucide-react";
+import { Pencil, Trash2, Check, X, Link2Off, Link2 } from "lucide-react";
 
 const CATEGORY_COLORS = {
   "Food & Drink": "#F0B14B",
@@ -18,7 +18,7 @@ const CATEGORY_COLORS = {
   Other: "#8A97A6",
 };
 
-function ExpenseRow({ expense, accounts, onUpdated, onDeleted }) {
+function ExpenseRow({ expense, onUpdated, onDeleted }) {
   const { token } = useAuth();
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -30,9 +30,9 @@ function ExpenseRow({ expense, accounts, onUpdated, onDeleted }) {
     currency: expense.currency || "SGD",
     date: expense.date || "",
     category: CATEGORIES.includes(expense.category) ? expense.category : "Other",
-    from_account_id: expense.from_account_id || "",
   });
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const linked = expense.wallet_linked !== false;
 
   async function save() {
     const amountNum = parseFloat(form.amount);
@@ -41,18 +41,14 @@ function ExpenseRow({ expense, accounts, onUpdated, onDeleted }) {
     setBusy(true);
     setError("");
     try {
-      const acc = accounts.find((a) => a.id === form.from_account_id);
       const updated = await updateExpense(token, expense.id, {
         amount: amountNum,
         merchant: form.merchant.trim(),
         date: form.date,
         category: form.category,
         currency: form.currency,
-        from_account_id: form.from_account_id || null,
-        from_type: acc?.type,
-        from_name: acc?.name,
       });
-      onUpdated(updated);
+      onUpdated({ ...updated, wallet_linked: expense.wallet_linked });
       setEditing(false);
     } catch (err) {
       setError(err.message);
@@ -74,6 +70,19 @@ function ExpenseRow({ expense, accounts, onUpdated, onDeleted }) {
     }
   }
 
+  async function toggleLink() {
+    setBusy(true);
+    setError("");
+    try {
+      await setWalletLink(token, expense.id, !linked);
+      onUpdated({ ...expense, wallet_linked: !linked });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (editing) {
     return (
       <div className="space-y-3 px-5 py-4">
@@ -91,18 +100,6 @@ function ExpenseRow({ expense, accounts, onUpdated, onDeleted }) {
             <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
             <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
           </Select>
-          <div className="sm:col-span-2">
-            <Select value={form.from_account_id} onValueChange={(v) => setField("from_account_id", v)}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Paid from" /></SelectTrigger>
-              <SelectContent>
-                {accounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.type === "spending" ? "Spending" : `Savings · ${a.name}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <div className="flex gap-2">
@@ -124,10 +121,8 @@ function ExpenseRow({ expense, accounts, onUpdated, onDeleted }) {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <p className="truncate font-medium">{expense.merchant}</p>
-            {expense.funding_source === "savings" && (
-              <span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                {expense.from_name || "savings"}
-              </span>
+            {!linked && (
+              <span className="shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">Untracked</span>
             )}
           </div>
           <p className="truncate text-sm text-muted-foreground">{expense.category} · {expense.date}</p>
@@ -144,6 +139,10 @@ function ExpenseRow({ expense, accounts, onUpdated, onDeleted }) {
           </div>
         ) : (
           <div className="flex items-center gap-2">
+            <button onClick={toggleLink} disabled={busy} aria-label={linked ? "Unlink from wallet" : "Re-link to wallet"} title={linked ? "Unlink (paid from untracked money)" : "Re-link to wallet"}
+              className={linked ? "text-muted-foreground hover:text-foreground" : "text-amber-400 hover:text-amber-300"}>
+              {linked ? <Link2Off className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
+            </button>
             <button onClick={() => setEditing(true)} aria-label="Edit expense" className="text-muted-foreground hover:text-foreground"><Pencil className="h-4 w-4" /></button>
             <button onClick={() => setConfirmDelete(true)} aria-label="Delete expense" className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
           </div>
@@ -154,12 +153,6 @@ function ExpenseRow({ expense, accounts, onUpdated, onDeleted }) {
 }
 
 export default function ExpenseList({ expenses, loading, hasFilter, onUpdated, onDeleted }) {
-  const { token } = useAuth();
-  const [accounts, setAccounts] = useState([]);
-  useEffect(() => {
-    getAccounts(token).then((d) => setAccounts(d.accounts || [])).catch(() => {});
-  }, [token]);
-
   if (loading) return <p className="py-8 text-center text-muted-foreground">Loading...</p>;
   if (!expenses.length) {
     return (
@@ -171,7 +164,7 @@ export default function ExpenseList({ expenses, loading, hasFilter, onUpdated, o
   return (
     <div className="divide-y divide-white/5">
       {expenses.map((e) => (
-        <ExpenseRow key={e.id} expense={e} accounts={accounts} onUpdated={onUpdated} onDeleted={onDeleted} />
+        <ExpenseRow key={e.id} expense={e} onUpdated={onUpdated} onDeleted={onDeleted} />
       ))}
     </div>
   );
