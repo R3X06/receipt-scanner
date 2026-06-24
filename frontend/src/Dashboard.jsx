@@ -101,7 +101,7 @@ export default function Dashboard() {
   const actions = [
     { key: "scan", label: "Scan", icon: ScanLine },
     { key: "add", label: "Add", icon: Plus },
-    { key: "income", label: "Income", icon: Wallet },
+    { key: "income", label: "Wallet", icon: Wallet },
     { key: "ask", label: "Ask AI", icon: Sparkles },
     { key: "insights", label: "Insights", icon: Lightbulb },
     { key: "savings", label: "Savings", icon: PiggyBank },
