@@ -4,13 +4,13 @@ import { CURRENCIES } from "./constants";
 import {
   getGoals, getEntries, savingsDeposit, savingsWithdraw,
   createGoalConfig, updateGoalConfig, deleteGoalConfig, reorderGoals,
-  updateMe, deleteEntry,
+  updateMe, deleteEntry, configureEmergency,
 } from "./api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, ChevronDown, GripVertical, PiggyBank } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronDown, GripVertical, PiggyBank, Shield } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -35,7 +35,6 @@ function GoalForm({ initial, onSubmit, onCancel, busy }) {
   const [target, setTarget] = useState(initial?.target_amount != null ? String(initial.target_amount) : "");
   const [reserve, setReserve] = useState(initial?.reserve ? String(initial.reserve) : "");
   const [deadline, setDeadline] = useState(initial?.deadline || "");
-  const [isEmergency, setIsEmergency] = useState(!!initial?.is_emergency);
   const [err, setErr] = useState("");
 
   function submit() {
@@ -50,7 +49,6 @@ function GoalForm({ initial, onSubmit, onCancel, busy }) {
       target_amount: t,
       reserve: r,
       deadline: deadline || null,
-      is_emergency: isEmergency,
       priority: initial?.priority || 0,
     });
   }
@@ -66,10 +64,6 @@ function GoalForm({ initial, onSubmit, onCancel, busy }) {
         <label className="text-xs text-muted-foreground">Deadline (optional)</label>
         <Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="[&::-webkit-calendar-picker-indicator]:invert" />
       </div>
-      <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-        <input type="checkbox" checked={isEmergency} onChange={(e) => setIsEmergency(e.target.checked)} className="h-3.5 w-3.5 rounded border-white/20 bg-white/[0.04] accent-primary" />
-        Emergency fund
-      </label>
       <p className="text-[11px] text-muted-foreground">Reserve is funded first; the rest is shared by your chosen strategy over (target − reserve).</p>
       {err && <p className="text-xs text-destructive">{err}</p>}
       <div className="flex gap-2">
@@ -177,6 +171,69 @@ function histRow(e, fmt) {
   return { sign: "−", label: e.to_type ? `Withdraw · to ${e.to}` : "Withdraw · spent", amt: fmt(e.amount_base ?? e.amount) };
 }
 
+function EmergencyBlock({ em, fmt, busy, onConfigure }) {
+  const [adjust, setAdjust] = useState(false);
+  const [cov, setCov] = useState(String(em?.coverage_months || 6));
+  const [reserve, setReserve] = useState(em?.reserve ? String(em.reserve) : "");
+  const on = !!em?.in_distribution;
+  const covers = em?.covers_months;
+
+  async function save() {
+    await onConfigure({ coverage_months: parseInt(cov, 10) || 6, reserve: reserve ? parseFloat(reserve) : 0 });
+    setAdjust(false);
+  }
+
+  return (
+    <div className="space-y-2 rounded-xl border border-primary/30 bg-primary/[0.06] p-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2"><Shield className="h-4 w-4 text-primary" /><span className="font-medium">Emergency fund</span></div>
+        <button type="button" role="switch" aria-checked={on} aria-label="Emergency fund in distribution" disabled={busy}
+          onClick={() => onConfigure({ in_distribution: !on })}
+          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${on ? "border-primary/40 bg-primary/80" : "border-white/15 bg-white/[0.06]"}`}>
+          <span className={`inline-block h-4 w-4 transform rounded-full transition-all ${on ? "translate-x-6 bg-white" : "translate-x-1 bg-white/40"}`} />
+        </button>
+      </div>
+
+      <div className="text-xs text-muted-foreground">
+        {covers != null ? <>covers <span className="text-foreground tabular-nums">{covers}</span> months</> : "tag some categories Essential to compute coverage"}
+        {em?.target_amount ? <> · target {fmt(em.target_amount)}</> : null}
+      </div>
+      <div className="text-xs text-muted-foreground">Holding <span className="tabular-nums text-foreground">{fmt(em?.allocated)}</span></div>
+      {em?.target_amount > 0 && (
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min((em.progress || 0) * 100, 100)}%` }} />
+        </div>
+      )}
+      {!on && (
+        (em?.reserve > 0)
+          ? <p className="text-[11px] text-muted-foreground">Off — floor {fmt(em.reserve)} held senior, not competing for the rest.</p>
+          : <p className="text-[11px] text-muted-foreground">Off — nothing set aside right now.</p>
+      )}
+
+      {adjust ? (
+        <div className="space-y-2 rounded-lg border border-white/10 bg-white/[0.03] p-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">Coverage</span>
+            <Select value={cov} onValueChange={setCov}>
+              <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+              <SelectContent>{["3", "6", "12"].map((m) => <SelectItem key={m} value={m}>{m} months</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <Input type="number" step="0.01" min="0" placeholder="Reserve (optional)" value={reserve} onChange={(e) => setReserve(e.target.value)} />
+          <div className="flex gap-2">
+            <Button onClick={save} disabled={busy} className="flex-1 font-medium">Save</Button>
+            <Button type="button" variant="outline" onClick={() => setAdjust(false)} className="border-white/10">Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        <Button type="button" variant="ghost" size="sm" onClick={() => setAdjust(true)} className="text-muted-foreground hover:text-foreground">
+          <Pencil className="mr-1.5 h-3.5 w-3.5" /> Adjust coverage &amp; reserve
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export default function SavingsCard({ reloadKey, onChange }) {
   const { token, user, setUser } = useAuth();
   const base = user?.primary_currency || "SGD";
@@ -207,6 +264,8 @@ export default function SavingsCard({ reloadKey, onChange }) {
   }
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [token, reloadKey]);
 
+  const emergency = goals.find((g) => g.is_emergency);
+  const rest = goals.filter((g) => !g.is_emergency);
   const dragEnabled = strategy === "waterfall" || goals.some((g) => (g.reserve || 0) > 0);
 
   async function changeStrategy(v) {
@@ -216,16 +275,24 @@ export default function SavingsCard({ reloadKey, onChange }) {
     onChange?.();
   }
 
+  async function configureEm(payload) {
+    setBusy(true);
+    try {
+      const d = await configureEmergency(token, payload);
+      setData(d); setGoals(d.goals || []); if (d.strategy) setStrategy(d.strategy); onChange?.();
+    } finally { setBusy(false); }
+  }
+
   async function onDragEnd(ev) {
     const { active, over } = ev;
     if (!over || active.id === over.id) return;
-    const oldI = goals.findIndex((g) => g.id === active.id);
-    const newI = goals.findIndex((g) => g.id === over.id);
+    const oldI = rest.findIndex((g) => g.id === active.id);
+    const newI = rest.findIndex((g) => g.id === over.id);
     if (oldI < 0 || newI < 0) return;
-    const next = arrayMove(goals, oldI, newI);
-    setGoals(next); // optimistic
+    const nextRest = arrayMove(rest, oldI, newI);
+    setGoals([...(emergency ? [emergency] : []), ...nextRest]); // optimistic, emergency pinned
     try {
-      const d = await reorderGoals(token, next.map((g) => g.id));
+      const d = await reorderGoals(token, nextRest.map((g) => g.id));
       setData(d); setGoals(d.goals || []); onChange?.();
     } catch { load(); }
   }
@@ -273,6 +340,8 @@ export default function SavingsCard({ reloadKey, onChange }) {
           </div>
         )}
 
+        {emergency && <EmergencyBlock em={emergency} fmt={fmt} busy={busy} onConfigure={configureEm} />}
+
         {/* strategy */}
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm text-muted-foreground">Split remainder by</span>
@@ -291,15 +360,15 @@ export default function SavingsCard({ reloadKey, onChange }) {
               : "Order doesn't affect this split."}
         </p>
 
-        {/* goals */}
+        {/* goals (emergency is pinned above; these are the rest) */}
         <div className="space-y-2">
-          {goals.length === 0 && !adding && (
-            <p className="text-sm text-muted-foreground">No goals yet. Savings sits unallocated until you add one.</p>
+          {rest.length === 0 && !adding && (
+            <p className="text-sm text-muted-foreground">No other goals yet — savings beyond the emergency fund sits unallocated until you add one.</p>
           )}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-            <SortableContext items={goals.map((g) => g.id)} strategy={verticalListSortingStrategy}>
+            <SortableContext items={rest.map((g) => g.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-2">
-                {goals.map((g) =>
+                {rest.map((g) =>
                   editId === g.id ? (
                     <GoalForm key={g.id} initial={g} busy={busy} onSubmit={(p) => saveGoal(g.id, p)} onCancel={() => setEditId(null)} />
                   ) : (

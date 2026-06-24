@@ -39,6 +39,12 @@ STATEMENTS = [
     # carry the old forced reservations over to the new reserve field (skips on fresh DBs)
     "UPDATE goals SET reserve = forced_amount WHERE funding_type = 'forced' AND reserve IS NULL",
 
+    # --- goals: emergency-fund participation + derived-coverage config ---
+    "ALTER TABLE goals ADD COLUMN in_distribution BOOLEAN",
+    "UPDATE goals SET in_distribution = TRUE WHERE in_distribution IS NULL",
+    "ALTER TABLE goals ADD COLUMN coverage_months INTEGER",
+    "UPDATE goals SET coverage_months = 6 WHERE is_emergency = TRUE AND coverage_months IS NULL",
+
     # --- users: chosen remainder-split strategy (replaces the waterfall/proportional flags) ---
     "ALTER TABLE users ADD COLUMN savings_strategy VARCHAR",
     "UPDATE users SET savings_strategy = 'proportional' WHERE savings_strategy IS NULL",

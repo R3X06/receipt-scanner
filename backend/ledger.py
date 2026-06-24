@@ -315,10 +315,11 @@ def goal_allocations(savings_balance, goals, strategy="proportional"):
     """Two passes over the savings pool:
       1. Reserves first. Sum every goal's reserve; if savings covers it, each goal
          is funded to its reserve. If not, reserves are filled senior-first by rank
-         and the juniors are cut (the only place a shortfall bites).
+         (the emergency fund is always most senior) and juniors are cut.
       2. Remainder by strategy. Whatever is left is split across goals (room =
-         target - reserve), capping at target and re-spreading overflow.
-    goals: [{id, reserve, target_amount, deadline, priority}]."""
+         target - reserve), capping at target and re-spreading overflow. A goal with
+         in_distribution=False sits out the remainder split — only its reserve is held.
+    goals: [{id, reserve, target_amount, deadline, priority, is_emergency, in_distribution}]."""
     savings = round(max(savings_balance, 0.0), 2)
     norm = []
     for g in goals:
@@ -326,9 +327,12 @@ def goal_allocations(savings_balance, goals, strategy="proportional"):
         reserve = max(g.get("reserve") or 0.0, 0.0)
         if target is not None:
             reserve = min(reserve, max(target, 0.0))
+        is_emerg = bool(g.get("is_emergency"))
         norm.append({"id": g["id"], "reserve": round(reserve, 2),
                      "target_amount": target, "deadline": g.get("deadline"),
-                     "priority": g.get("priority", 0) or 0})
+                     # emergency fund is pinned most senior regardless of stored rank
+                     "priority": -1 if is_emerg else (g.get("priority", 0) or 0),
+                     "in_distribution": g.get("in_distribution", True) is not False})
     alloc = {g["id"]: 0.0 for g in norm}
     total_reserve = round(sum(g["reserve"] for g in norm), 2)
 
@@ -346,11 +350,16 @@ def goal_allocations(savings_balance, goals, strategy="proportional"):
         alloc[g["id"]] = g["reserve"]
     remainder = round(savings - total_reserve, 2)
 
-    # Pass 2 — remainder
+    # Pass 2 — remainder (goals that opt out keep only their reserve: room = 0)
     room_goals = []
     for g in norm:
         target = g["target_amount"]
-        room = None if target is None else max(round(target - g["reserve"], 2), 0.0)
+        if not g["in_distribution"]:
+            room = 0.0
+        elif target is None:
+            room = None
+        else:
+            room = max(round(target - g["reserve"], 2), 0.0)
         room_goals.append({"id": g["id"], "room": room,
                            "deadline": g["deadline"], "priority": g["priority"]})
     extra, leftover = _spread(remainder, strategy, room_goals)
@@ -361,34 +370,78 @@ def goal_allocations(savings_balance, goals, strategy="proportional"):
             "unallocated": round(max(leftover, 0.0), 2)}
 
 
+def _ensure_emergency(db, user):
+    """Guarantee exactly one emergency-fund goal exists. Created opted-OUT of the
+    remainder split so it never silently shifts an existing user's allocations;
+    new users get it switched on at signup. Demotes any stray duplicates."""
+    emergencies = db.query(models.Goal).filter(
+        models.Goal.user_id == user.id,
+        models.Goal.is_emergency == True,  # noqa: E712
+        models.Goal.archived == False,     # noqa: E712
+    ).order_by(models.Goal.priority).all()
+    if not emergencies:
+        g = models.Goal(user_id=user.id, name="Emergency fund", is_emergency=True,
+                         in_distribution=False, coverage_months=6, priority=0, reserve=None)
+        db.add(g)
+        db.commit()
+        db.refresh(g)
+        return g
+    keep = emergencies[0]
+    for extra in emergencies[1:]:            # collapse legacy multi-emergency data
+        extra.is_emergency = False
+    if len(emergencies) > 1:
+        db.commit()
+    return keep
+
+
 def goals_view(db, user, strategy=None):
-    """Savings balance + each goal's derived allocation (no money is stored on goals)."""
+    """Savings balance + each goal's derived allocation (no money is stored on goals).
+    The emergency fund's target is derived from essentials (coverage months × average
+    essential monthly spend) rather than typed in."""
+    _ensure_emergency(db, user)
     sav = savings_account(db, user.id)
     sav_bal = round(account_balances(db, user.id).get(sav.id, 0.0), 2) if sav else 0.0
+    ess = essential_monthly_spend(db, user)
     goals = db.query(models.Goal).filter(
         models.Goal.user_id == user.id,
         models.Goal.archived == False,  # noqa: E712
     ).order_by(models.Goal.priority).all()
+
+    def derived_target(g):
+        if g.is_emergency:
+            months = g.coverage_months or 6
+            return round(months * ess, 2) if ess else 0.0
+        return g.target_amount
+
     gdicts = [{
-        "id": g.id, "reserve": g.reserve, "target_amount": g.target_amount,
+        "id": g.id, "reserve": g.reserve, "target_amount": derived_target(g),
         "deadline": g.deadline, "priority": g.priority or 0,
+        "is_emergency": bool(g.is_emergency),
+        "in_distribution": g.in_distribution is not False,
     } for g in goals]
     strat = strategy or _algo_strategy(user)
     res = goal_allocations(sav_bal, gdicts, strat)
     alloc = res["allocations"]
+
     out = []
     for g in goals:
         a = round(alloc.get(g.id, 0.0), 2)
+        tgt = derived_target(g)
         item = {
             "id": g.id, "name": g.name, "reserve": round(g.reserve or 0.0, 2),
-            "target_amount": g.target_amount, "deadline": g.deadline,
+            "target_amount": tgt, "deadline": g.deadline,
             "priority": g.priority or 0, "is_emergency": bool(g.is_emergency),
+            "in_distribution": g.in_distribution is not False,
             "allocated": a, "currency": user.primary_currency or "SGD",
         }
-        if g.target_amount and g.target_amount > 0:
-            item["progress"] = round(min(a / g.target_amount, 1.0), 4)
-            item["remaining"] = round(max(g.target_amount - a, 0.0), 2)
-            item["reserve_met"] = a + 1e-6 >= round(min(g.reserve or 0.0, g.target_amount), 2)
+        if g.is_emergency:
+            item["coverage_months"] = g.coverage_months or 6
+            item["essential_monthly"] = round(ess, 2)
+            item["covers_months"] = round(a / ess, 1) if ess > 0 else None
+        if tgt and tgt > 0:
+            item["progress"] = round(min(a / tgt, 1.0), 4)
+            item["remaining"] = round(max(tgt - a, 0.0), 2)
+            item["reserve_met"] = a + 1e-6 >= round(min(g.reserve or 0.0, tgt), 2)
         out.append(item)
     return {"savings_balance": sav_bal, "unallocated": res["unallocated"],
             "strategy": strat, "goals": out}

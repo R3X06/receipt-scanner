@@ -114,7 +114,9 @@ class Goal(Base):
     target_amount = Column(Float, nullable=True)        # optional goal size
     deadline = Column(String, nullable=True)            # ISO date
     priority = Column(Integer, default=0)               # rank: lower = senior (reserve filled first / waterfall first)
-    is_emergency = Column(Boolean, default=False)       # marks the emergency reserve
+    is_emergency = Column(Boolean, default=False)       # marks THE single emergency fund (target derived from essentials)
+    in_distribution = Column(Boolean, default=True)      # competes for the remainder; if False, only its reserve is held senior
+    coverage_months = Column(Integer, nullable=True)     # emergency only: months of essential spend the target aims to cover
     reserve = Column(Float, nullable=True)              # guaranteed floor, funded before the remainder split (0 <= reserve <= target)
     archived = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)

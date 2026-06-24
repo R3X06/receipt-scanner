@@ -325,3 +325,14 @@ export async function reorderGoals(token, order) {
   if (!res.ok) throw new Error(data.detail || "Failed to reorder goals");
   return data; // returns the fresh goals_view
 }
+
+export async function configureEmergency(token, payload) {
+  const res = await fetch(`${API_URL}/goals/emergency`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to update emergency fund");
+  return data; // fresh goals_view
+}

@@ -88,6 +88,9 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)):
                        "Shopping": "discretionary", "Entertainment": "discretionary",
                        "Other": None, "Uncategorized": None}.items():
         db.add(models.Category(user_id=user.id, name=name, kind=kind))
+    # new users start with the emergency fund switched on (existing users get it off via lazy-ensure)
+    db.add(models.Goal(user_id=user.id, name="Emergency fund", is_emergency=True,
+                       in_distribution=True, coverage_months=6, priority=0))
     db.commit()
     token = auth.create_token({"sub": user.email})
     return {"access_token": token, "token_type": "bearer"}
@@ -600,6 +603,7 @@ class GoalConfigRequest(BaseModel):
     deadline: Optional[str] = None
     priority: Optional[int] = 0
     is_emergency: Optional[bool] = False
+    in_distribution: Optional[bool] = True
     reserve: Optional[float] = None               # guaranteed floor, funded before the remainder split
 
 
@@ -647,7 +651,8 @@ def create_goal_config(body: GoalConfigRequest, db: Session = Depends(get_db),
     g = models.Goal(
         user_id=current_user.id, name=body.name, target_amount=body.target_amount,
         deadline=body.deadline, priority=body.priority or 0,
-        is_emergency=bool(body.is_emergency),
+        is_emergency=False,  # the emergency fund is managed via /goals/emergency, never the normal form
+        in_distribution=body.in_distribution is not False,
         reserve=_clamp_reserve(body.reserve, body.target_amount),
     )
     db.add(g)
@@ -663,14 +668,36 @@ def update_goal_config(goal_id: str, body: GoalConfigRequest, db: Session = Depe
     if not g:
         raise HTTPException(status_code=404, detail="Goal not found")
     g.name = body.name
-    g.target_amount = body.target_amount
     g.deadline = body.deadline
     g.priority = body.priority or 0
-    g.is_emergency = bool(body.is_emergency)
-    g.reserve = _clamp_reserve(body.reserve, body.target_amount)
+    # don't let the normal form flip emergency status; emergency target stays derived
+    if not g.is_emergency:
+        g.target_amount = body.target_amount
+        g.in_distribution = body.in_distribution is not False
+    g.reserve = _clamp_reserve(body.reserve, g.target_amount if g.is_emergency else body.target_amount)
     db.commit()
     db.refresh(g)
     return {"id": g.id}
+
+
+class EmergencyConfigRequest(BaseModel):
+    in_distribution: Optional[bool] = None       # toggle: participate in the remainder split
+    coverage_months: Optional[int] = None        # 3 / 6 / 12 -> target = months x essential monthly spend
+    reserve: Optional[float] = None              # optional senior floor (your choice, like any goal)
+
+
+@app.post("/goals/emergency")
+def configure_emergency(body: EmergencyConfigRequest, db: Session = Depends(get_db),
+                        current_user: models.User = Depends(auth.get_current_user)):
+    g = ledger._ensure_emergency(db, current_user)
+    if body.in_distribution is not None:
+        g.in_distribution = bool(body.in_distribution)
+    if body.coverage_months is not None:
+        g.coverage_months = max(1, int(body.coverage_months))
+    if body.reserve is not None:
+        g.reserve = max(body.reserve, 0.0) if body.reserve else None
+    db.commit()
+    return ledger.goals_view(db, current_user)
 
 
 @app.delete("/goals/{goal_id}")

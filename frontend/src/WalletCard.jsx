@@ -53,14 +53,14 @@ export default function WalletCard({ reloadKey, onChange }) {
 
         <div className="flex items-baseline gap-2">
           <span className="text-2xl font-semibold tabular-nums">{fmt(walletBal)}</span>
-          {cf?.income ? <span className="text-xs text-muted-foreground">+{fmt(cf.income)} in this month</span> : null}
+          <span className="text-xs text-muted-foreground">available now</span>
         </div>
 
         {cf && (
           <div className="grid grid-cols-3 gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm">
-            <Stat label="Income" value={fmt(cf.income)} className="text-primary" />
-            <Stat label="Spending" value={fmt(cf.spending)} />
-            <Stat label="Surplus" value={fmt(cf.surplus)} className={cf.surplus < 0 ? "text-destructive" : ""} />
+            <Stat label="In this month" value={fmt(cf.income)} className="text-primary" />
+            <Stat label="Spent" value={fmt(cf.spending)} />
+            <Stat label="To savings" value={fmt(cf.to_savings_net)} />
           </div>
         )}
 
