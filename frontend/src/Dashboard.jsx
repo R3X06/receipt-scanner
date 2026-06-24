@@ -10,11 +10,9 @@ import Insights from "./Insights";
 import ProfileCard from "./ProfileCard";
 import ExpenseList from "./ExpenseList";
 import Settings from "./Settings";
-import Savings from "./Savings";
-import Goals from "./Goals";
-import CashFlowCard from "./CashFlowCard";
+import WalletCard from "./WalletCard";
+import SavingsCard from "./SavingsCard";
 import ReconciliationCard from "./ReconciliationCard";
-import IncomeForm from "./IncomeForm";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +36,6 @@ import {
   ChevronDown,
   Wallet,
   PiggyBank,
-  Target,
 } from "lucide-react";
 
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
@@ -52,9 +49,11 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ start: "", end: "", category: "" });
 
-  const [openDialog, setOpenDialog] = useState(null); // 'scan'|'add'|'ask'|'insights'|'filter'
+  const [openDialog, setOpenDialog] = useState(null); // 'scan'|'add'|'ask'|'insights'|'filter'|'settings'
   const [expensesOpen, setExpensesOpen] = useState(true);
   const [ledgerReload, setLedgerReload] = useState(0);
+
+  const bump = () => setLedgerReload((k) => k + 1);
 
   useEffect(() => {
     setLoading(true);
@@ -67,7 +66,6 @@ export default function Dashboard() {
   const baseCurrency = user?.primary_currency || "SGD";
   const displayName = (user?.display_name && user.display_name.trim()) || (user?.email ? user.email.split("@")[0] : "your");
   const hasFilter = !!(filters.start || filters.end || filters.category);
-  
 
   // keep the list open whenever a filter is active, so results are visible
   useEffect(() => {
@@ -76,6 +74,7 @@ export default function Dashboard() {
 
   function handleExpenseAdded(expense) {
     setExpenses((prev) => [expense, ...prev]);
+    bump();
   }
   function handleExpenseAddedAndClose(expense) {
     handleExpenseAdded(expense);
@@ -83,9 +82,11 @@ export default function Dashboard() {
   }
   function handleExpenseUpdated(updated) {
     setExpenses((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+    bump();
   }
   function handleExpenseDeleted(id) {
     setExpenses((prev) => prev.filter((e) => e.id !== id));
+    bump();
   }
 
   const totalBase = expenses.reduce((s, e) => s + baseAmount(e), 0);
@@ -101,14 +102,13 @@ export default function Dashboard() {
   const actions = [
     { key: "scan", label: "Scan", icon: ScanLine },
     { key: "add", label: "Add", icon: Plus },
-    { key: "income", label: "Wallet", icon: Wallet },
+    { key: "wallet", label: "Wallet", icon: Wallet },
+    { key: "savings", label: "Savings", icon: PiggyBank },
     { key: "ask", label: "Ask AI", icon: Sparkles },
     { key: "insights", label: "Insights", icon: Lightbulb },
-    { key: "savings", label: "Savings", icon: PiggyBank },
-    { key: "goals", label: "Goals", icon: Target },
   ];
 
-  const isEmpty = !loading && expenses.length === 0 && !hasFilter;
+  const noExpenses = !loading && expenses.length === 0 && !hasFilter;
 
   return (
     <div className="relative min-h-screen p-4 sm:p-6">
@@ -143,18 +143,33 @@ export default function Dashboard() {
           </Button>
         </div>
 
-        {isEmpty ? (
-          /* first-run empty state */
+        {/* action buttons */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
+          {actions.map(({ key, label, icon: Icon }) => (
+            <Button
+              key={key}
+              variant="outline"
+              onClick={() => setOpenDialog(key)}
+              className="h-auto flex-col gap-1.5 border-white/10 bg-white/[0.04] py-4 backdrop-blur-xl hover:bg-white/[0.08]"
+            >
+              <Icon className="h-5 w-5 text-primary" />
+              <span className="text-sm font-medium">{label}</span>
+            </Button>
+          ))}
+        </div>
+
+        <ReconciliationCard reloadKey={ledgerReload} onAddIncome={() => setOpenDialog("wallet")} onChange={bump} />
+
+        {noExpenses ? (
+          /* first-run expenses hint */
           <Card className={`${GLASS} rounded-2xl`}>
-            <CardContent className="flex flex-col items-center gap-4 py-14 text-center">
+            <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
                 <Wallet className="h-6 w-6 text-primary" />
               </div>
               <div>
                 <p className="text-lg font-medium">No expenses yet</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Scan a receipt or add one manually to get started.
-                </p>
+                <p className="mt-1 text-sm text-muted-foreground">Scan a receipt or add one manually to get started.</p>
               </div>
               <div className="flex flex-wrap justify-center gap-2">
                 <Button onClick={() => setOpenDialog("scan")} className="font-medium">
@@ -188,27 +203,8 @@ export default function Dashboard() {
               </Card>
             )}
 
-            {/* action buttons */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-7">
-              {actions.map(({ key, label, icon: Icon }) => (
-                <Button
-                  key={key}
-                  variant="outline"
-                  onClick={() => setOpenDialog(key)}
-                  className="h-auto flex-col gap-1.5 border-white/10 bg-white/[0.04] py-4 backdrop-blur-xl hover:bg-white/[0.08]"
-                >
-                  <Icon className="h-5 w-5 text-primary" />
-                  <span className="text-sm font-medium">{label}</span>
-                </Button>
-              ))}
-            </div>
-
-            <CashFlowCard reloadKey={ledgerReload} />
-            <ReconciliationCard reloadKey={ledgerReload} onAddIncome={() => setOpenDialog("income")} onChange={() => setLedgerReload((k) => k + 1)} />
-
             {/* charts */}
             <Charts expenses={expenses} baseCurrency={baseCurrency} />
-            
 
             {/* collapsible expenses */}
             <Card className={`${GLASS} overflow-hidden rounded-2xl p-0`}>
@@ -217,7 +213,7 @@ export default function Dashboard() {
                   <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expensesOpen ? "" : "-rotate-90"}`} />
                   <span className="font-medium">Expenses</span>
                   <span className="text-sm text-muted-foreground">
-                    · {baseCurrency} {totalBase.toFixed(2)} · {expenses.length}
+                    {baseCurrency} {totalBase.toFixed(2)} · {expenses.length}
                   </span>
                 </button>
                 <Button
@@ -280,7 +276,6 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Ask AI & Insights: free to dismiss */}
       <Dialog open={openDialog === "ask"} onOpenChange={(o) => setOpenDialog(o ? "ask" : null)}>
         <DialogContent className={DIALOG}>
           <DialogTitle className="sr-only">Ask AI</DialogTitle>
@@ -288,24 +283,17 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={openDialog === "wallet"} onOpenChange={(o) => setOpenDialog(o ? "wallet" : null)}>
+        <DialogContent className={`${DIALOG} max-h-[88vh] overflow-y-auto glass-scroll`}>
+          <DialogTitle className="sr-only">Wallet</DialogTitle>
+          <WalletCard reloadKey={ledgerReload} onChange={bump} />
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={openDialog === "savings"} onOpenChange={(o) => setOpenDialog(o ? "savings" : null)}>
-        <DialogContent className={DIALOG}>
+        <DialogContent className={`${DIALOG} max-h-[88vh] overflow-y-auto glass-scroll`}>
           <DialogTitle className="sr-only">Savings</DialogTitle>
-          <Savings onChange={() => setLedgerReload((k) => k + 1)} />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={openDialog === "income"} onOpenChange={(o) => setOpenDialog(o ? "income" : null)}>
-        <DialogContent className={DIALOG}>
-          <DialogTitle className="sr-only">Add income</DialogTitle>
-          <IncomeForm onDone={() => setLedgerReload((k) => k + 1)} />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={openDialog === "goals"} onOpenChange={(o) => setOpenDialog(o ? "goals" : null)}>
-        <DialogContent className={DIALOG}>
-          <DialogTitle className="sr-only">Goals</DialogTitle>
-          <Goals onChange={() => setLedgerReload((k) => k + 1)} />
+          <SavingsCard reloadKey={ledgerReload} onChange={bump} />
         </DialogContent>
       </Dialog>
 

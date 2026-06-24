@@ -297,3 +297,31 @@ export async function setWalletLink(token, id, walletLinked) {
   if (!res.ok) throw new Error(data.detail || "Failed to update wallet link");
   return data;
 }
+export async function getAccounts(token) {
+  const res = await fetch(`${API_URL}/accounts`, { headers: { Authorization: `Bearer ${token}` } });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to fetch accounts");
+  return data; // { accounts:[{type,name,balance,...}], net_worth, currency }
+}
+
+export async function getEntries(token) {
+  const res = await fetch(`${API_URL}/ledger/entries?limit=1000`, { headers: { Authorization: `Bearer ${token}` } });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to fetch entries");
+  return data.entries || [];
+}
+
+export async function deleteEntry(token, id) {
+  return deleteExpense(token, id); // generic /ledger/entries/{id} DELETE
+}
+
+export async function reorderGoals(token, order) {
+  const res = await fetch(`${API_URL}/goals/reorder`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ order }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to reorder goals");
+  return data; // returns the fresh goals_view
+}

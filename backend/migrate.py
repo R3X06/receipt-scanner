@@ -34,6 +34,15 @@ STATEMENTS = [
     "ALTER TABLE ledger_entries ADD COLUMN wallet_linked BOOLEAN",
     "ALTER TABLE ledger_entries ADD COLUMN inferred BOOLEAN",
 
+    # --- goals: per-goal reserve floor (replaces funding_type/forced_amount) ---
+    "ALTER TABLE goals ADD COLUMN reserve FLOAT",
+    # carry the old forced reservations over to the new reserve field (skips on fresh DBs)
+    "UPDATE goals SET reserve = forced_amount WHERE funding_type = 'forced' AND reserve IS NULL",
+
+    # --- users: chosen remainder-split strategy (replaces the waterfall/proportional flags) ---
+    "ALTER TABLE users ADD COLUMN savings_strategy VARCHAR",
+    "UPDATE users SET savings_strategy = 'proportional' WHERE savings_strategy IS NULL",
+
     # --- backfill existing rows: linked & real by default, ordered by created_at ---
     "UPDATE ledger_entries SET wallet_linked = TRUE WHERE wallet_linked IS NULL",
     "UPDATE ledger_entries SET inferred = FALSE WHERE inferred IS NULL",

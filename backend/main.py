@@ -60,6 +60,7 @@ class UserUpdateRequest(BaseModel):
     feature_pay_yourself_first: Optional[bool] = None
     feature_priority_waterfall: Optional[bool] = None
     feature_proportional_allocation: Optional[bool] = None
+    savings_strategy: Optional[str] = None
     pyf_percent: Optional[float] = None
 
 
@@ -116,6 +117,7 @@ def _user_payload(u: models.User):
         "feature_pay_yourself_first": bool(u.feature_pay_yourself_first) if u.feature_pay_yourself_first is not None else True,
         "feature_priority_waterfall": bool(u.feature_priority_waterfall) if u.feature_priority_waterfall is not None else True,
         "feature_proportional_allocation": bool(u.feature_proportional_allocation) if u.feature_proportional_allocation is not None else True,
+        "savings_strategy": (u.savings_strategy or "proportional"),
         "pyf_percent": u.pyf_percent,
     }
 
@@ -132,11 +134,14 @@ def update_me(
     current_user: models.User = Depends(auth.get_current_user)
 ):
     data = body.model_dump(exclude_unset=True) if hasattr(body, "model_dump") else body.dict(exclude_unset=True)
+    if "savings_strategy" in data:
+        s = (data.get("savings_strategy") or "proportional").lower()
+        data["savings_strategy"] = s if s in ("waterfall", "proportional", "even") else "proportional"
     for field in ("display_name", "avatar", "primary_currency", "monthly_budget",
                   "occupation", "monthly_income", "goals",
                   "feature_essential_tagging", "feature_pace_tracking",
                   "feature_pay_yourself_first", "feature_priority_waterfall",
-                  "feature_proportional_allocation", "pyf_percent"):
+                  "feature_proportional_allocation", "savings_strategy", "pyf_percent"):
         if field in data:
             setattr(current_user, field, data[field])
     db.commit()
@@ -196,7 +201,7 @@ def ai_insights(
     base_currency = current_user.primary_currency or "SGD"
     profile = {
         "goals": current_user.goals,
-        "monthly_income": current_user.monthly_income,
+        "monthly_income": ledger.monthly_income_avg(db, current_user),
         "monthly_budget": current_user.monthly_budget,
         "occupation": current_user.occupation,
     }
@@ -280,7 +285,7 @@ def ledger_expense(body: LedgerExpenseRequest, db: Session = Depends(get_db),
                    current_user: models.User = Depends(auth.get_current_user)):
     spend = ledger.spending_account(db, current_user.id)
     if not spend:
-        raise HTTPException(status_code=400, detail="No spending account — run the ledger backfill.")
+        raise HTTPException(status_code=400, detail="No wallet account found.")
     frm = body.from_account_id or spend.id
     if not _own_account(db, current_user, frm):
         raise HTTPException(status_code=400, detail="Invalid source account")
@@ -302,7 +307,7 @@ def ledger_income(body: LedgerIncomeRequest, db: Session = Depends(get_db),
                   current_user: models.User = Depends(auth.get_current_user)):
     spend = ledger.spending_account(db, current_user.id)
     if not spend:
-        raise HTTPException(status_code=400, detail="No spending account — run the ledger backfill.")
+        raise HTTPException(status_code=400, detail="No wallet account found.")
     e = ledger.post_entry(
         db, current_user, amount=body.amount, currency=body.currency,
         from_account_id=None, to_account_id=spend.id, date=body.date,
@@ -472,19 +477,33 @@ class SavingsDepositRequest(BaseModel):
 @app.post("/ledger/savings/deposit")
 def savings_deposit(body: SavingsDepositRequest, db: Session = Depends(get_db),
                     current_user: models.User = Depends(auth.get_current_user)):
+    if not body.amount or body.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive.")
     sav = _get_or_create_savings(db, current_user)
+    base = current_user.primary_currency or "SGD"
+    conv = fx.convert_to_base(amount=body.amount, currency=body.currency or base,
+                              base_currency=base, receipt_date_str=body.date)
+    amt_base = conv["amount_base"]
     frm = None
-    if body.source != "external":
+    if body.source != "external":                        # 'surplus' = moved out of the wallet
         spend = ledger.spending_account(db, current_user.id)
         if not spend:
-            raise HTTPException(status_code=400, detail="No spending account")
+            raise HTTPException(status_code=400, detail="No wallet account")
+        wallet_bal = round(ledger.account_balances(db, current_user.id).get(spend.id, 0.0), 2)
+        if amt_base > wallet_bal + 1e-6:
+            raise HTTPException(status_code=400,
+                                detail=f"Not enough in wallet — available {base} {wallet_bal:,.2f}.")
         frm = spend.id
     e = ledger.post_entry(db, current_user, amount=body.amount, currency=body.currency,
                           from_account_id=frm, to_account_id=sav.id, date=body.date,
                           occurred_at=_parse_occurred(body.occurred_at), note=body.note)
     db.commit()
     db.refresh(e)
-    return {"id": e.id, "source": body.source}
+    bal = ledger.account_balances(db, current_user.id)
+    spend = ledger.spending_account(db, current_user.id)
+    return {"id": e.id, "source": body.source,
+            "wallet_balance": round(bal.get(spend.id, 0.0), 2) if spend else None,
+            "savings_balance": round(bal.get(sav.id, 0.0), 2)}
 
 
 class SavingsWithdrawRequest(BaseModel):
@@ -499,7 +518,17 @@ class SavingsWithdrawRequest(BaseModel):
 @app.post("/ledger/savings/withdraw")
 def savings_withdraw(body: SavingsWithdrawRequest, db: Session = Depends(get_db),
                      current_user: models.User = Depends(auth.get_current_user)):
+    if not body.amount or body.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive.")
     sav = _get_or_create_savings(db, current_user)
+    base = current_user.primary_currency or "SGD"
+    conv = fx.convert_to_base(amount=body.amount, currency=body.currency or base,
+                              base_currency=base, receipt_date_str=body.date)
+    amt_base = conv["amount_base"]
+    sav_bal = round(ledger.account_balances(db, current_user.id).get(sav.id, 0.0), 2)
+    if amt_base > sav_bal + 1e-6:
+        raise HTTPException(status_code=400,
+                            detail=f"Not enough in savings — available {base} {sav_bal:,.2f}.")
     to_id = None
     if body.to != "world":
         spend = ledger.spending_account(db, current_user.id)
@@ -509,7 +538,11 @@ def savings_withdraw(body: SavingsWithdrawRequest, db: Session = Depends(get_db)
                           occurred_at=_parse_occurred(body.occurred_at), note=body.note)
     db.commit()
     db.refresh(e)
-    return {"id": e.id, "to": body.to}
+    bal = ledger.account_balances(db, current_user.id)
+    spend = ledger.spending_account(db, current_user.id)
+    return {"id": e.id, "to": body.to,
+            "wallet_balance": round(bal.get(spend.id, 0.0), 2) if spend else None,
+            "savings_balance": round(bal.get(sav.id, 0.0), 2)}
 
 
 class OpeningBalanceRequest(BaseModel):
@@ -567,8 +600,14 @@ class GoalConfigRequest(BaseModel):
     deadline: Optional[str] = None
     priority: Optional[int] = 0
     is_emergency: Optional[bool] = False
-    funding_type: Optional[str] = "algorithmic"   # 'forced' | 'algorithmic'
-    forced_amount: Optional[float] = None
+    reserve: Optional[float] = None               # guaranteed floor, funded before the remainder split
+
+
+def _clamp_reserve(reserve, target):
+    r = max(reserve or 0.0, 0.0)
+    if target is not None:
+        r = min(r, max(target, 0.0))
+    return round(r, 2) if r else None
 
 
 def _own_goal(db, user, goal_id):
@@ -583,6 +622,25 @@ def get_goals(db: Session = Depends(get_db),
     return ledger.goals_view(db, current_user)
 
 
+class GoalReorderRequest(BaseModel):
+    order: list   # goal ids, top-first; index becomes the priority rank (1 = most senior)
+
+
+@app.post("/goals/reorder")
+def reorder_goals(body: GoalReorderRequest, db: Session = Depends(get_db),
+                  current_user: models.User = Depends(auth.get_current_user)):
+    owned = {g.id: g for g in db.query(models.Goal).filter(
+        models.Goal.user_id == current_user.id).all()}
+    rank = 1
+    for gid in body.order:
+        g = owned.get(gid)
+        if g:
+            g.priority = rank
+            rank += 1
+    db.commit()
+    return ledger.goals_view(db, current_user)
+
+
 @app.post("/goals")
 def create_goal_config(body: GoalConfigRequest, db: Session = Depends(get_db),
                        current_user: models.User = Depends(auth.get_current_user)):
@@ -590,7 +648,7 @@ def create_goal_config(body: GoalConfigRequest, db: Session = Depends(get_db),
         user_id=current_user.id, name=body.name, target_amount=body.target_amount,
         deadline=body.deadline, priority=body.priority or 0,
         is_emergency=bool(body.is_emergency),
-        funding_type=body.funding_type or "algorithmic", forced_amount=body.forced_amount,
+        reserve=_clamp_reserve(body.reserve, body.target_amount),
     )
     db.add(g)
     db.commit()
@@ -609,8 +667,7 @@ def update_goal_config(goal_id: str, body: GoalConfigRequest, db: Session = Depe
     g.deadline = body.deadline
     g.priority = body.priority or 0
     g.is_emergency = bool(body.is_emergency)
-    g.funding_type = body.funding_type or "algorithmic"
-    g.forced_amount = body.forced_amount
+    g.reserve = _clamp_reserve(body.reserve, body.target_amount)
     db.commit()
     db.refresh(g)
     return {"id": g.id}

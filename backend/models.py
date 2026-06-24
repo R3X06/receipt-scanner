@@ -30,6 +30,7 @@ class User(Base):
     feature_priority_waterfall = Column(Boolean, default=True)
     feature_proportional_allocation = Column(Boolean, default=True)
     pyf_percent = Column(Float, nullable=True)   # pay-yourself-first: % of logged income to auto-allocate
+    savings_strategy = Column(String, default="proportional")  # 'waterfall'|'proportional'|'even' — splits the remainder after reserves
     created_at = Column(DateTime, default=datetime.utcnow)
     # ledger
     accounts = relationship("Account", back_populates="owner")
@@ -102,8 +103,9 @@ class Category(Base):
 class Goal(Base):
     """A goal is a *derived claim* over the savings balance, not an account.
     It holds no money; its current allocation is recomputed from the savings
-    pool + these config fields. Forced goals reserve a fixed amount (senior);
-    algorithmic goals share the remainder via the chosen strategy (junior)."""
+    pool + these config fields. Every goal may carry an optional `reserve`: a
+    floor that is funded off the top before the chosen strategy splits whatever
+    remains (each goal then competing for the remainder over target - reserve)."""
     __tablename__ = "goals"
 
     id = Column(String, primary_key=True, default=gen_uuid)
@@ -111,10 +113,9 @@ class Goal(Base):
     name = Column(String, nullable=False)
     target_amount = Column(Float, nullable=True)        # optional goal size
     deadline = Column(String, nullable=True)            # ISO date
-    priority = Column(Integer, default=0)               # lower = senior (filled first, cut last)
+    priority = Column(Integer, default=0)               # rank: lower = senior (reserve filled first / waterfall first)
     is_emergency = Column(Boolean, default=False)       # marks the emergency reserve
-    funding_type = Column(String, default="algorithmic")  # 'forced' | 'algorithmic'
-    forced_amount = Column(Float, nullable=True)        # reserved amount when funding_type == 'forced'
+    reserve = Column(Float, nullable=True)              # guaranteed floor, funded before the remainder split (0 <= reserve <= target)
     archived = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 

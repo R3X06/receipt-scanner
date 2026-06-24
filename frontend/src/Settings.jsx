@@ -105,11 +105,8 @@ export default function Settings({ onClose }) {
     primary_currency: user?.primary_currency || "SGD",
     monthly_budget: user?.monthly_budget != null ? String(user.monthly_budget) : "",
     occupation: user?.occupation || "none",
-    monthly_income: user?.monthly_income != null ? String(user.monthly_income) : "",
     goals: user?.goals || "",
     feature_pay_yourself_first: user?.feature_pay_yourself_first ?? true,
-    feature_priority_waterfall: user?.feature_priority_waterfall ?? true,
-    feature_proportional_allocation: user?.feature_proportional_allocation ?? true,
     feature_pace_tracking: user?.feature_pace_tracking ?? true,
     feature_essential_tagging: user?.feature_essential_tagging ?? true,
     pyf_percent: user?.pyf_percent != null ? String(user.pyf_percent) : "",
@@ -129,11 +126,8 @@ export default function Settings({ onClose }) {
         primary_currency: form.primary_currency,
         monthly_budget: form.monthly_budget === "" ? null : parseFloat(form.monthly_budget),
         occupation: form.occupation === "none" ? null : form.occupation,
-        monthly_income: form.monthly_income === "" ? null : parseFloat(form.monthly_income),
         goals: form.goals,
         feature_pay_yourself_first: form.feature_pay_yourself_first,
-        feature_priority_waterfall: form.feature_priority_waterfall,
-        feature_proportional_allocation: form.feature_proportional_allocation,
         feature_pace_tracking: form.feature_pace_tracking,
         feature_essential_tagging: form.feature_essential_tagging,
         pyf_percent: form.pyf_percent === "" ? null : parseFloat(form.pyf_percent),
@@ -191,18 +185,13 @@ export default function Settings({ onClose }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label>Occupation</Label>
-            <Select value={form.occupation} onValueChange={(v) => setField("occupation", v)}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>{OCCUPATIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Monthly income <span className="text-muted-foreground">(optional)</span></Label>
-            <Input type="number" step="0.01" min="0" placeholder="Optional" value={form.monthly_income} onChange={(e) => setField("monthly_income", e.target.value)} />
-          </div>
+        <div className="space-y-2">
+          <Label>Occupation</Label>
+          <Select value={form.occupation} onValueChange={(v) => setField("occupation", v)}>
+            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>{OCCUPATIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">Monthly income is calculated automatically from your recorded income — no need to enter it.</p>
         </div>
 
         <div className="space-y-2">
@@ -221,8 +210,6 @@ export default function Settings({ onClose }) {
               <span className="text-xs text-muted-foreground">% of income to set aside</span>
             </div>
           )}
-          <ToggleRow label="Priority waterfall" hint="Auto-fill goals in priority order" checked={form.feature_priority_waterfall} onChange={(v) => setField("feature_priority_waterfall", v)} />
-          <ToggleRow label="Proportional allocation" hint="Split deposits by each goal's deadline run-rate" checked={form.feature_proportional_allocation} onChange={(v) => setField("feature_proportional_allocation", v)} />
           <ToggleRow label="Goal pace tracking" hint="Show 'need X/mo' on goals with deadlines" checked={form.feature_pace_tracking} onChange={(v) => setField("feature_pace_tracking", v)} />
           <ToggleRow label="Essential vs discretionary" hint="Tag categories for emergency-fund coverage" checked={form.feature_essential_tagging} onChange={(v) => setField("feature_essential_tagging", v)} />
         </div>

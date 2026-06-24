@@ -11,7 +11,7 @@ Two flags refine derivation:
 
 Savings is a first-class account (a second wallet). Goals are NOT accounts —
 they are derived claims over the savings balance (see goal_allocations)."""
-import uuid
+import math
 from datetime import datetime
 import models
 import fx
@@ -194,6 +194,7 @@ def cashflow(db, user, month=None):
         "surplus": round(surplus, 2), "to_savings_net": round(net_to_savings, 2),
         "external_to_savings": round(external_in, 2), "leftover": round(leftover, 2),
         "savings_rate": round(rate, 4) if rate is not None else None,
+        "monthly_income_avg": monthly_income_avg(db, user),
     }
 
 
@@ -245,46 +246,119 @@ def wallet_reconciliation(db, user):
 # ---------------- goal allocations (derived claims over savings) ----------------
 
 def _algo_strategy(user):
-    if getattr(user, "feature_proportional_allocation", True):
-        return "proportional"
-    if getattr(user, "feature_priority_waterfall", True):
-        return "waterfall"
-    return "even"
+    """Which strategy splits the post-reserve remainder. Single explicit choice
+    (the old waterfall/proportional feature-flag cascade is retired)."""
+    s = (getattr(user, "savings_strategy", None) or "proportional").lower()
+    return s if s in ("waterfall", "proportional", "even") else "proportional"
 
 
-def goal_allocations(savings_balance, goals, strategy="even"):
-    """Derive each goal's current claim on the savings balance.
-    goals: list of dicts {id, funding_type, forced_amount, target_amount, deadline, priority}.
-    Forced goals reserve forced_amount off the top (senior, priority asc = filled first,
-    cut last). Algorithmic goals share the remainder via `strategy`. When savings can't
-    cover all forced reservations, forced goals are filled senior-first and the
-    lowest-priority forced goals are cut first."""
-    savings_balance = round(max(savings_balance, 0.0), 2)
-    forced = [g for g in goals if g.get("funding_type") == "forced"]
-    algo = [g for g in goals if g.get("funding_type") != "forced"]
-    alloc = {g["id"]: 0.0 for g in goals}
+def _room_left(g, extra):
+    """Remaining headroom on a goal during the remainder split.
+    room is None for an open-ended (no-target) goal -> unbounded."""
+    if g["room"] is None:
+        return math.inf
+    return g["room"] - extra[g["id"]]
 
-    total_forced = round(sum(max(g.get("forced_amount") or 0.0, 0.0) for g in forced), 2)
 
-    if savings_balance >= total_forced:
-        for g in forced:
-            alloc[g["id"]] = round(max(g.get("forced_amount") or 0.0, 0.0), 2)
-        remainder = round(savings_balance - total_forced, 2)
-        if algo and remainder > 0:
-            for gid, amt in allocate(remainder, strategy, algo):
-                alloc[gid] = round(alloc.get(gid, 0.0) + amt, 2)
-        unallocated = round(savings_balance - round(sum(alloc.values()), 2), 2)
-    else:
-        left = savings_balance
-        for g in sorted(forced, key=lambda g: g.get("priority", 0)):
-            want = round(max(g.get("forced_amount") or 0.0, 0.0), 2)
-            take = round(min(left, want), 2)
+def _spread(remainder, strategy, room_goals):
+    """Split `remainder` across goals by `strategy`, capping each goal at its
+    room (= target - reserve) and re-spreading any overflow onto goals that
+    still have room. Iterates until the pool is spent or every goal is full.
+    room_goals: [{id, room (None = unbounded), deadline, priority}].
+    Returns (extra: {id: amount_from_remainder}, leftover_unallocated)."""
+    extra = {g["id"]: 0.0 for g in room_goals}
+    pool = round(max(remainder, 0.0), 2)
+    guard = 0
+    while pool > 0.005 and guard < 10000:
+        guard += 1
+        active = [g for g in room_goals if _room_left(g, extra) > 0.005]
+        if not active:
+            break
+
+        if strategy == "waterfall":
+            g = min(active, key=lambda x: x.get("priority", 0))
+            give = min(pool, _room_left(g, extra))
+            extra[g["id"]] += give
+            pool = round(pool - give, 2)
+            continue
+
+        if strategy == "proportional":
+            weighted = []
+            for g in active:
+                months = _months_until(g.get("deadline"))
+                rem = _room_left(g, extra)
+                rem = 0.0 if rem == math.inf else rem
+                weighted.append((g, (rem / months) if (months and months > 0) else 0.0))
+            total_w = sum(w for _, w in weighted)
+            if total_w <= 0:                      # nothing deadline-weighted -> fall back to even
+                weighted = [(g, 1.0) for g in active]
+                total_w = float(len(active))
+        else:                                     # even
+            weighted = [(g, 1.0) for g in active]
+            total_w = float(len(active))
+
+        moved = 0.0
+        for g, w in weighted:
+            give = min(pool * (w / total_w), _room_left(g, extra))
+            if give <= 0:
+                continue
+            extra[g["id"]] += give
+            moved += give
+        pool = round(pool - moved, 2)
+        if moved <= 0.005:                        # safety: no progress -> stop
+            break
+
+    return {k: round(v, 2) for k, v in extra.items()}, round(max(pool, 0.0), 2)
+
+
+def goal_allocations(savings_balance, goals, strategy="proportional"):
+    """Two passes over the savings pool:
+      1. Reserves first. Sum every goal's reserve; if savings covers it, each goal
+         is funded to its reserve. If not, reserves are filled senior-first by rank
+         and the juniors are cut (the only place a shortfall bites).
+      2. Remainder by strategy. Whatever is left is split across goals (room =
+         target - reserve), capping at target and re-spreading overflow.
+    goals: [{id, reserve, target_amount, deadline, priority}]."""
+    savings = round(max(savings_balance, 0.0), 2)
+    norm = []
+    for g in goals:
+        target = g.get("target_amount")
+        reserve = max(g.get("reserve") or 0.0, 0.0)
+        if target is not None:
+            reserve = min(reserve, max(target, 0.0))
+        norm.append({"id": g["id"], "reserve": round(reserve, 2),
+                     "target_amount": target, "deadline": g.get("deadline"),
+                     "priority": g.get("priority", 0) or 0})
+    alloc = {g["id"]: 0.0 for g in norm}
+    total_reserve = round(sum(g["reserve"] for g in norm), 2)
+
+    # Pass 1 — reserves
+    if savings < total_reserve:
+        left = savings
+        for g in sorted(norm, key=lambda x: x["priority"]):
+            take = round(min(left, g["reserve"]), 2)
             alloc[g["id"]] = take
             left = round(left - take, 2)
-        unallocated = 0.0
+        return {"allocations": {k: round(v, 2) for k, v in alloc.items()},
+                "unallocated": 0.0}
+
+    for g in norm:
+        alloc[g["id"]] = g["reserve"]
+    remainder = round(savings - total_reserve, 2)
+
+    # Pass 2 — remainder
+    room_goals = []
+    for g in norm:
+        target = g["target_amount"]
+        room = None if target is None else max(round(target - g["reserve"], 2), 0.0)
+        room_goals.append({"id": g["id"], "room": room,
+                           "deadline": g["deadline"], "priority": g["priority"]})
+    extra, leftover = _spread(remainder, strategy, room_goals)
+    for gid, v in extra.items():
+        alloc[gid] = round(alloc[gid] + v, 2)
 
     return {"allocations": {k: round(v, 2) for k, v in alloc.items()},
-            "unallocated": round(max(unallocated, 0.0), 2)}
+            "unallocated": round(max(leftover, 0.0), 2)}
 
 
 def goals_view(db, user, strategy=None):
@@ -296,8 +370,7 @@ def goals_view(db, user, strategy=None):
         models.Goal.archived == False,  # noqa: E712
     ).order_by(models.Goal.priority).all()
     gdicts = [{
-        "id": g.id, "funding_type": g.funding_type or "algorithmic",
-        "forced_amount": g.forced_amount, "target_amount": g.target_amount,
+        "id": g.id, "reserve": g.reserve, "target_amount": g.target_amount,
         "deadline": g.deadline, "priority": g.priority or 0,
     } for g in goals]
     strat = strategy or _algo_strategy(user)
@@ -307,81 +380,41 @@ def goals_view(db, user, strategy=None):
     for g in goals:
         a = round(alloc.get(g.id, 0.0), 2)
         item = {
-            "id": g.id, "name": g.name, "funding_type": g.funding_type or "algorithmic",
-            "forced_amount": g.forced_amount, "target_amount": g.target_amount,
-            "deadline": g.deadline, "priority": g.priority or 0,
-            "is_emergency": bool(g.is_emergency), "allocated": a,
-            "currency": user.primary_currency or "SGD",
+            "id": g.id, "name": g.name, "reserve": round(g.reserve or 0.0, 2),
+            "target_amount": g.target_amount, "deadline": g.deadline,
+            "priority": g.priority or 0, "is_emergency": bool(g.is_emergency),
+            "allocated": a, "currency": user.primary_currency or "SGD",
         }
         if g.target_amount and g.target_amount > 0:
             item["progress"] = round(min(a / g.target_amount, 1.0), 4)
             item["remaining"] = round(max(g.target_amount - a, 0.0), 2)
+            item["reserve_met"] = a + 1e-6 >= round(min(g.reserve or 0.0, g.target_amount), 2)
         out.append(item)
     return {"savings_balance": sav_bal, "unallocated": res["unallocated"],
             "strategy": strat, "goals": out}
 
 
-# ---------------- allocation engine (shared by goal_allocations) ----------------
+# ---------------- generated monthly income (never user-entered) ----------------
 
-def _even(amount, ids):
-    if not ids:
-        return []
-    each = round(amount / len(ids), 2)
-    splits = [(i, each) for i in ids]
-    _fix_rounding(splits, amount)
-    return splits
-
-
-def _fix_rounding(splits, total):
-    if not splits:
-        return
-    diff = round(total - sum(a for _, a in splits), 2)
-    if abs(diff) >= 0.01:
-        gid, amt = splits[0]
-        splits[0] = (gid, round(amt + diff, 2))
-
-
-def allocate(amount, strategy, goals):
-    """goals: list of dicts (id, balance, target_amount, deadline, priority).
-    Returns [(goal_id, amount), ...]. 'manual' is handled by the caller."""
-    amount = round(amount, 2)
-    if amount <= 0 or not goals:
-        return []
-
-    if strategy == "waterfall":
-        splits, left = [], amount
-        for g in sorted(goals, key=lambda g: g.get("priority", 0)):
-            if left <= 0:
-                break
-            target = g.get("target_amount")
-            if target:
-                room = max(target - g.get("balance", 0.0), 0.0)
-                take = min(left, room)
-            else:
-                take = left
-            if take > 0:
-                splits.append((g["id"], round(take, 2)))
-                left = round(left - take, 2)
-        if left > 0.009:
-            if splits:
-                gid, amt = splits[-1]
-                splits[-1] = (gid, round(amt + left, 2))
-            else:
-                splits.append((goals[0]["id"], amount))
-        return splits
-
-    if strategy == "proportional":
-        weights = []
-        for g in goals:
-            months = _months_until(g.get("deadline"))
-            target = g.get("target_amount")
-            remaining = max((target or 0) - g.get("balance", 0.0), 0.0)
-            weights.append((g["id"], (remaining / months) if (months and months > 0 and remaining > 0) else 0.0))
-        total = sum(w for _, w in weights)
-        if total <= 0:
-            return _even(amount, [g["id"] for g in goals])
-        splits = [(gid, round(amount * w / total, 2)) for gid, w in weights if w > 0]
-        _fix_rounding(splits, amount)
-        return splits
-
-    return _even(amount, [g["id"] for g in goals])
+def monthly_income_avg(db, user):
+    """Average monthly wallet income across the months that actually have real
+    income (inferred opening balances excluded). A generated figure — there is
+    no keyed monthly-income value any more."""
+    spend = spending_account(db, user.id)
+    if not spend:
+        return 0.0
+    rows = db.query(models.LedgerEntry).filter(
+        models.LedgerEntry.user_id == user.id,
+        models.LedgerEntry.from_account_id.is_(None),   # inflow from the World
+        models.LedgerEntry.to_account_id == spend.id,   # landing in the wallet
+    ).all()
+    by_month = {}
+    for e in rows:
+        if getattr(e, "inferred", False):
+            continue
+        d = e.fx_date or e.date or ""
+        if len(d) >= 7:
+            by_month[d[:7]] = by_month.get(d[:7], 0.0) + entry_base(e)
+    if not by_month:
+        return 0.0
+    return round(sum(by_month.values()) / len(by_month), 2)
