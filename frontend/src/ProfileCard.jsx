@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Settings, Eye, EyeOff } from "lucide-react";
+import { useAuth } from "./AuthContext";
+import { getCategories } from "./api";
 
 const baseAmount = (e) => (e.amount_base != null ? e.amount_base : e.amount);
 
@@ -11,6 +13,37 @@ function inCurrentMonth(e) {
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const d = e.fx_date || "";
   return typeof d === "string" && d.startsWith(ym);
+}
+
+// A data-driven spending style derived from the essential-vs-discretionary split
+// of actual spend (using each category's tagged kind). Returns a neutral label
+// until there's enough tagged spending to judge honestly.
+function spenderProfile(expenses, kindByCat) {
+  if (!expenses || expenses.length < 6) {
+    return { label: "Getting started", amber: false, title: "Log a few expenses to see your spending style" };
+  }
+  let essential = 0, discretionary = 0, total = 0;
+  for (const e of expenses) {
+    const v = baseAmount(e);
+    if (!(v > 0)) continue;
+    total += v;
+    const kind = kindByCat[e.category];
+    if (kind === "essential") essential += v;
+    else if (kind === "discretionary") discretionary += v;
+  }
+  const classified = essential + discretionary;
+  if (total <= 0 || classified < total * 0.35) {
+    return { label: "Balanced spender", amber: false, title: "Tag more categories as essential or wants to classify your style" };
+  }
+  const share = discretionary / classified;            // discretionary share of classified spend
+  const pct = Math.round(share * 100);
+  if (share <= 0.30) {
+    return { label: "Disciplined spender", amber: false, title: `${pct}% of tagged spend is on wants — mostly essentials` };
+  }
+  if (share >= 0.60) {
+    return { label: "Lifestyle spender", amber: true, title: `${pct}% of tagged spend is on wants` };
+  }
+  return { label: "Balanced spender", amber: false, title: `${pct}% of tagged spend is on wants` };
 }
 
 export default function ProfileCard({ user, expenses, onOpenSettings }) {
@@ -47,7 +80,20 @@ export default function ProfileCard({ user, expenses, onOpenSettings }) {
   const budgetLeftPct =
     budget && budget > 0 ? Math.round(((budget - monthlySpent) / budget) * 100) : null;
 
-  const spenderTag = "Balanced spender";
+  const { token } = useAuth();
+  const [kindByCat, setKindByCat] = useState({});
+  useEffect(() => {
+    if (!token) return;
+    let alive = true;
+    getCategories(token)
+      .then((d) => {
+        if (alive) setKindByCat(Object.fromEntries((d.categories || []).map((c) => [c.name, c.kind])));
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [token]);
+
+  const spender = spenderProfile(expenses, kindByCat);
 
   function openSettings() {
     setOpen(false);
@@ -118,8 +164,15 @@ export default function ProfileCard({ user, expenses, onOpenSettings }) {
             </div>
 
             <div>
-              <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary-enhanced">
-                {spenderTag}
+              <span
+                title={spender.title}
+                className={`inline-block cursor-default rounded-full border px-3 py-1 text-xs font-medium ${
+                  spender.amber
+                    ? "border-[#F0B14B]/30 bg-[#F0B14B]/10 text-[#F0B14B]"
+                    : "border-primary/30 bg-primary/10 text-primary-enhanced"
+                }`}
+              >
+                {spender.label}
               </span>
             </div>
 
