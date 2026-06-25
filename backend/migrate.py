@@ -20,13 +20,9 @@ STATEMENTS = [
     "ALTER TABLE users ADD COLUMN avatar VARCHAR",
     "ALTER TABLE users ADD COLUMN monthly_budget FLOAT",
     "ALTER TABLE users ADD COLUMN occupation VARCHAR",
-    "ALTER TABLE users ADD COLUMN monthly_income FLOAT",
     "ALTER TABLE users ADD COLUMN goals TEXT",
-    "ALTER TABLE users ADD COLUMN feature_essential_tagging BOOLEAN",
     "ALTER TABLE users ADD COLUMN feature_pace_tracking BOOLEAN",
     "ALTER TABLE users ADD COLUMN feature_pay_yourself_first BOOLEAN",
-    "ALTER TABLE users ADD COLUMN feature_priority_waterfall BOOLEAN",
-    "ALTER TABLE users ADD COLUMN feature_proportional_allocation BOOLEAN",
     "ALTER TABLE users ADD COLUMN pyf_percent FLOAT",
 
     # --- ledger_entries: new model columns (occurred_at / wallet_linked / inferred) ---
@@ -44,6 +40,9 @@ STATEMENTS = [
     "UPDATE goals SET in_distribution = TRUE WHERE in_distribution IS NULL",
     "ALTER TABLE goals ADD COLUMN coverage_months INTEGER",
     "UPDATE goals SET coverage_months = 6 WHERE is_emergency = TRUE AND coverage_months IS NULL",
+    # unify emergency-fund participation: every emergency fund competes for the remainder
+    # (older accounts created theirs opted-out; this brings them in line with new signups)
+    "UPDATE goals SET in_distribution = TRUE WHERE is_emergency = TRUE",
 
     # --- users: chosen remainder-split strategy (replaces the waterfall/proportional flags) ---
     "ALTER TABLE users ADD COLUMN savings_strategy VARCHAR",

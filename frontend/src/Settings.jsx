@@ -108,7 +108,6 @@ export default function Settings({ onClose }) {
     goals: user?.goals || "",
     feature_pay_yourself_first: user?.feature_pay_yourself_first ?? true,
     feature_pace_tracking: user?.feature_pace_tracking ?? true,
-    feature_essential_tagging: user?.feature_essential_tagging ?? true,
     pyf_percent: user?.pyf_percent != null ? String(user.pyf_percent) : "",
   });
   const [saving, setSaving] = useState(false);
@@ -129,7 +128,6 @@ export default function Settings({ onClose }) {
         goals: form.goals,
         feature_pay_yourself_first: form.feature_pay_yourself_first,
         feature_pace_tracking: form.feature_pace_tracking,
-        feature_essential_tagging: form.feature_essential_tagging,
         pyf_percent: form.pyf_percent === "" ? null : parseFloat(form.pyf_percent),
       });
       setUser(updated);
@@ -211,10 +209,9 @@ export default function Settings({ onClose }) {
             </div>
           )}
           <ToggleRow label="Goal pace tracking" hint="Show 'need X/mo' on goals with deadlines" checked={form.feature_pace_tracking} onChange={(v) => setField("feature_pace_tracking", v)} />
-          <ToggleRow label="Essential vs discretionary" hint="Tag categories for emergency-fund coverage" checked={form.feature_essential_tagging} onChange={(v) => setField("feature_essential_tagging", v)} />
         </div>
 
-        {form.feature_essential_tagging && <CategoryTags token={token} />}  
+        <CategoryTags token={token} />
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 

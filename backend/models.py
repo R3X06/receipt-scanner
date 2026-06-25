@@ -21,14 +21,10 @@ class User(Base):
     avatar = Column(String, nullable=True)
     monthly_budget = Column(Float, nullable=True)
     occupation = Column(String, nullable=True)
-    monthly_income = Column(Float, nullable=True)
     goals = Column(TEXT, default="")
     # --- feature toggles (all default on; user can switch off) ---
-    feature_essential_tagging = Column(Boolean, default=True)
     feature_pace_tracking = Column(Boolean, default=True)
     feature_pay_yourself_first = Column(Boolean, default=True)
-    feature_priority_waterfall = Column(Boolean, default=True)
-    feature_proportional_allocation = Column(Boolean, default=True)
     pyf_percent = Column(Float, nullable=True)   # pay-yourself-first: % of logged income to auto-allocate
     savings_strategy = Column(String, default="proportional")  # 'waterfall'|'proportional'|'even' — splits the remainder after reserves
     created_at = Column(DateTime, default=datetime.utcnow)

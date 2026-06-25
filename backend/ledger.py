@@ -142,7 +142,7 @@ def account_view(user, account, balances, essential_spend=None):
 
 def list_accounts(db, user):
     balances = account_balances(db, user.id)
-    ess = essential_monthly_spend(db, user) if getattr(user, "feature_essential_tagging", True) else None
+    ess = essential_monthly_spend(db, user)
     accounts = db.query(models.Account).filter(
         models.Account.user_id == user.id,
         models.Account.archived == False,  # noqa: E712
@@ -371,9 +371,9 @@ def goal_allocations(savings_balance, goals, strategy="proportional"):
 
 
 def _ensure_emergency(db, user):
-    """Guarantee exactly one emergency-fund goal exists. Created opted-OUT of the
-    remainder split so it never silently shifts an existing user's allocations;
-    new users get it switched on at signup. Demotes any stray duplicates."""
+    """Guarantee exactly one emergency-fund goal exists. Created opted-IN to the
+    remainder split, matching new signups (the participation default is now uniform
+    across every creation path). Demotes any stray duplicates."""
     emergencies = db.query(models.Goal).filter(
         models.Goal.user_id == user.id,
         models.Goal.is_emergency == True,  # noqa: E712
@@ -381,7 +381,7 @@ def _ensure_emergency(db, user):
     ).order_by(models.Goal.priority).all()
     if not emergencies:
         g = models.Goal(user_id=user.id, name="Emergency fund", is_emergency=True,
-                         in_distribution=False, coverage_months=6, priority=0, reserve=None)
+                         in_distribution=True, coverage_months=6, priority=0, reserve=None)
         db.add(g)
         db.commit()
         db.refresh(g)
@@ -442,6 +442,14 @@ def goals_view(db, user, strategy=None):
             item["progress"] = round(min(a / tgt, 1.0), 4)
             item["remaining"] = round(max(tgt - a, 0.0), 2)
             item["reserve_met"] = a + 1e-6 >= round(min(g.reserve or 0.0, tgt), 2)
+            # pace: how much per month to reach the target by the deadline
+            if (not g.is_emergency) and g.deadline and getattr(user, "feature_pace_tracking", True):
+                months = _months_until(g.deadline)
+                if months is not None:
+                    item["months_left"] = months
+                    item["required_per_month"] = (
+                        round(item["remaining"] / months, 2) if months > 0 else item["remaining"]
+                    )
         out.append(item)
     return {"savings_balance": sav_bal, "unallocated": res["unallocated"],
             "strategy": strat, "goals": out}

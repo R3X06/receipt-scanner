@@ -100,6 +100,13 @@ function SortableGoal({ g, fmt, dragEnabled, onEdit, onDelete }) {
             <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min((g.progress || 0) * 100, 100)}%` }} />
           </div>
         )}
+        {g.required_per_month != null && (
+          <div className="mt-1 text-[11px] text-primary/90">
+            Need <span className="tabular-nums">{fmt(g.required_per_month)}</span>/mo
+            {g.months_left > 0 ? <span className="text-muted-foreground"> · {g.months_left} mo left</span>
+              : <span className="text-muted-foreground"> · due now</span>}
+          </div>
+        )}
       </div>
       <div className="flex shrink-0 gap-1">
         <button type="button" onClick={onEdit} aria-label="Edit goal" className="rounded-lg p-1.5 text-muted-foreground hover:bg-white/5 hover:text-foreground"><Pencil className="h-4 w-4" /></button>

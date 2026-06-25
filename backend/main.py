@@ -18,8 +18,6 @@ Base.metadata.create_all(bind=engine)
 
 import migrate
 migrate.run()
-#import backfill_ledger
-#backfill_ledger.backfill()
 
 app = FastAPI()
 
@@ -53,13 +51,9 @@ class UserUpdateRequest(BaseModel):
     primary_currency: Optional[str] = None
     monthly_budget: Optional[float] = None
     occupation: Optional[str] = None
-    monthly_income: Optional[float] = None
     goals: Optional[str] = None
-    feature_essential_tagging: Optional[bool] = None
     feature_pace_tracking: Optional[bool] = None
     feature_pay_yourself_first: Optional[bool] = None
-    feature_priority_waterfall: Optional[bool] = None
-    feature_proportional_allocation: Optional[bool] = None
     savings_strategy: Optional[str] = None
     pyf_percent: Optional[float] = None
 
@@ -88,7 +82,8 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)):
                        "Shopping": "discretionary", "Entertainment": "discretionary",
                        "Other": None, "Uncategorized": None}.items():
         db.add(models.Category(user_id=user.id, name=name, kind=kind))
-    # new users start with the emergency fund switched on (existing users get it off via lazy-ensure)
+    # emergency fund participates in the remainder split by default (uniform across
+    # signup and the lazy-ensure path; users can opt out via /goals/emergency)
     db.add(models.Goal(user_id=user.id, name="Emergency fund", is_emergency=True,
                        in_distribution=True, coverage_months=6, priority=0))
     db.commit()
@@ -113,13 +108,9 @@ def _user_payload(u: models.User):
         "primary_currency": u.primary_currency or "SGD",
         "monthly_budget": u.monthly_budget,
         "occupation": u.occupation,
-        "monthly_income": u.monthly_income,
         "goals": u.goals or "",
-        "feature_essential_tagging": bool(u.feature_essential_tagging) if u.feature_essential_tagging is not None else True,
         "feature_pace_tracking": bool(u.feature_pace_tracking) if u.feature_pace_tracking is not None else True,
         "feature_pay_yourself_first": bool(u.feature_pay_yourself_first) if u.feature_pay_yourself_first is not None else True,
-        "feature_priority_waterfall": bool(u.feature_priority_waterfall) if u.feature_priority_waterfall is not None else True,
-        "feature_proportional_allocation": bool(u.feature_proportional_allocation) if u.feature_proportional_allocation is not None else True,
         "savings_strategy": (u.savings_strategy or "proportional"),
         "pyf_percent": u.pyf_percent,
     }
@@ -141,10 +132,9 @@ def update_me(
         s = (data.get("savings_strategy") or "proportional").lower()
         data["savings_strategy"] = s if s in ("waterfall", "proportional", "even") else "proportional"
     for field in ("display_name", "avatar", "primary_currency", "monthly_budget",
-                  "occupation", "monthly_income", "goals",
-                  "feature_essential_tagging", "feature_pace_tracking",
-                  "feature_pay_yourself_first", "feature_priority_waterfall",
-                  "feature_proportional_allocation", "savings_strategy", "pyf_percent"):
+                  "occupation", "goals",
+                  "feature_pace_tracking", "feature_pay_yourself_first",
+                  "savings_strategy", "pyf_percent"):
         if field in data:
             setattr(current_user, field, data[field])
     db.commit()

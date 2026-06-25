@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createExpense } from "./api";
+import { createExpense, suggestCategory } from "./api";
 import { useAuth } from "./AuthContext";
 import { CATEGORIES, CURRENCIES } from "./constants";
 
@@ -22,10 +22,27 @@ export default function ExpenseForm({ onExpenseAdded }) {
   const [merchant, setMerchant] = useState("");
   const [when, setWhen] = useState(nowLocal());
   const [category, setCategory] = useState("Other");
+  const [categoryTouched, setCategoryTouched] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [currency, setCurrency] = useState("SGD");
   const [walletLinked, setWalletLinked] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // suggest a category from the merchant name, unless the user has already picked one
+  async function suggestFromMerchant() {
+    const name = merchant.trim();
+    if (!name || categoryTouched) return;
+    setSuggesting(true);
+    try {
+      const { category: guess } = await suggestCategory(token, { merchant: name });
+      if (guess && CATEGORIES.includes(guess) && !categoryTouched) setCategory(guess);
+    } catch {
+      // best-effort — leave the current category alone
+    } finally {
+      setSuggesting(false);
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -47,6 +64,8 @@ export default function ExpenseForm({ onExpenseAdded }) {
       setMerchant("");
       setWhen(nowLocal());
       setWalletLinked(true);
+      setCategory("Other");
+      setCategoryTouched(false);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -65,13 +84,14 @@ export default function ExpenseForm({ onExpenseAdded }) {
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>{CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
             </Select>
-            <Input type="text" placeholder="Merchant" value={merchant} onChange={(e) => setMerchant(e.target.value)} required />
+            <Input type="text" placeholder="Merchant" value={merchant} onChange={(e) => setMerchant(e.target.value)} onBlur={suggestFromMerchant} required />
             <Input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} required className="[&::-webkit-calendar-picker-indicator]:invert" />
             <div className="col-span-2">
-              <Select value={category} onValueChange={setCategory}>
+              <Select value={category} onValueChange={(v) => { setCategory(v); setCategoryTouched(true); }}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
+              {suggesting && <p className="mt-1 text-xs text-muted-foreground">Suggesting a category…</p>}
             </div>
           </div>
           <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer select-none">
