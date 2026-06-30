@@ -13,6 +13,7 @@ Savings is a first-class account (a second wallet). Goals are NOT accounts —
 they are derived claims over the savings balance (see goal_allocations)."""
 import math
 from datetime import datetime
+from clock import utcnow
 import models
 import fx
 import providers
@@ -42,7 +43,7 @@ def post_entry(db, user, *, amount, currency=None, from_account_id, to_account_i
     conv = providers.get_fx().convert_to_base(amount=amount, currency=currency,
                               base_currency=base_currency, receipt_date_str=date)
     entry = models.LedgerEntry(
-        user_id=user.id, date=date or "", occurred_at=occurred_at or datetime.utcnow(),
+        user_id=user.id, date=date or "", occurred_at=occurred_at or utcnow(),
         amount=amount, currency=currency,
         amount_base=conv["amount_base"], base_currency=conv["base_currency"],
         fx_rate=conv["fx_rate"], fx_date=conv["fx_date"],
@@ -95,7 +96,7 @@ def _months_until(deadline_iso):
         d = datetime.strptime(deadline_iso[:10], "%Y-%m-%d")
     except ValueError:
         return None
-    now = datetime.utcnow()
+    now = utcnow()
     return max((d.year - now.year) * 12 + (d.month - now.month), 0)
 
 
@@ -158,7 +159,7 @@ def net_worth(db, user):
 # ---------------- cash-flow statement (monthly, advisory layer) ----------------
 
 def cashflow(db, user, month=None):
-    ym = month or datetime.utcnow().strftime("%Y-%m")
+    ym = month or utcnow().strftime("%Y-%m")
     entries = db.query(models.LedgerEntry).filter(models.LedgerEntry.user_id == user.id).all()
     spend = spending_account(db, user.id)
     spend_id = spend.id if spend else None

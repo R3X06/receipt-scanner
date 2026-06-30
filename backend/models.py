@@ -3,7 +3,7 @@ from sqlalchemy.dialects.sqlite import TEXT
 from sqlalchemy.orm import relationship
 from database import Base
 import uuid
-from datetime import datetime
+from clock import utcnow
 
 
 def gen_uuid():
@@ -27,7 +27,7 @@ class User(Base):
     feature_pay_yourself_first = Column(Boolean, default=True)
     pyf_percent = Column(Float, nullable=True)   # pay-yourself-first: % of logged income to auto-allocate
     savings_strategy = Column(String, default="proportional")  # 'waterfall'|'proportional'|'even' — splits the remainder after reserves
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     # ledger
     accounts = relationship("Account", back_populates="owner")
     ledger_entries = relationship("LedgerEntry", back_populates="owner")
@@ -49,7 +49,7 @@ class Account(Base):
     priority = Column(Integer, default=0)
     is_emergency = Column(Boolean, default=False)
     archived = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     owner = relationship("User", back_populates="accounts")
 
@@ -60,7 +60,7 @@ class LedgerEntry(Base):
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     date = Column(String)                            # transaction date, ISO (calendar day)
-    occurred_at = Column(DateTime, default=datetime.utcnow)  # precise event time; orders the running wallet
+    occurred_at = Column(DateTime, default=utcnow)  # precise event time; orders the running wallet
     amount = Column(Float, nullable=False)           # original
     currency = Column(String)
     amount_base = Column(Float)
@@ -79,7 +79,7 @@ class LedgerEntry(Base):
     parsed_ok = Column(Boolean, nullable=True)
     allocation_strategy = Column(String, nullable=True)   # 'manual'|'waterfall'|'proportional'|'pyf'
     batch_id = Column(String, nullable=True)              # groups entries from one allocation event
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     owner = relationship("User", back_populates="ledger_entries")
 
@@ -91,7 +91,7 @@ class Category(Base):
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     name = Column(String, nullable=False)
     kind = Column(String, nullable=True)             # 'essential' | 'discretionary' | None
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     owner = relationship("User", back_populates="categories")
 
@@ -115,6 +115,6 @@ class Goal(Base):
     coverage_months = Column(Integer, nullable=True)     # emergency only: months of essential spend the target aims to cover
     reserve = Column(Float, nullable=True)              # guaranteed floor, funded before the remainder split (0 <= reserve <= target)
     archived = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     owner = relationship("User", back_populates="goal_configs")
