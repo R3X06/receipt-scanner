@@ -4,6 +4,8 @@ import os
 import re
 from datetime import datetime
 
+from logging_config import logger
+
 GOOGLE_VISION_API_KEY = os.getenv("GOOGLE_VISION_API_KEY")
 
 # A bare "$" is intentionally NOT mapped — it's ambiguous (USD/SGD/AUD/HKD all
@@ -41,13 +43,13 @@ def extract_text_from_image(image_bytes: bytes) -> str:
     try:
         return data["responses"][0]["fullTextAnnotation"]["text"]
     except (KeyError, IndexError):
-        print("VISION RESPONSE:", data)
+        logger.warning("vision_no_text", extra={"response": str(data)[:300]})
         return ""
 
 
 # ---------- amount ----------
 def _amount_from_lines(lines):
-    low = [l.lower() for l in lines]
+    low = [ln.lower() for ln in lines]
     # Priority: grand total > total (but NOT subtotal) > subtotal.
     # (?<!sub) stops "subtotal" from matching the "total" rule.
     priority = [
@@ -68,7 +70,7 @@ def _amount_from_lines(lines):
                 if m:
                     return float(m.group(1))
     # fallback: the largest money-looking number on the receipt
-    found = [float(x) for l in lines for x in re.findall(r'\d+\.\d{2}', l)]
+    found = [float(x) for ln in lines for x in re.findall(r'\d+\.\d{2}', ln)]
     return max(found) if found else None
 
 
@@ -109,7 +111,7 @@ def _date_from_lines(lines):
 
 
 def parse_receipt(text: str, base_currency: str = "USD") -> dict:
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
     amount = _amount_from_lines(lines)
     return {
         "merchant": (lines[0] if lines else "Unknown"),

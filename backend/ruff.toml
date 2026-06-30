@@ -1,0 +1,8 @@
+# Lint config for the KALLA backend. Default rule set (pyflakes + a curated
+# subset of pycodestyle); line length relaxed to match the existing codebase.
+line-length = 100
+exclude = [".venv", "__pycache__", "*.db"]
+
+[lint]
+# Defaults are E4/E7/E9 + F. Keep them; they catch real problems (unused
+# imports, undefined names, bad import placement) without style bikeshedding.

@@ -15,6 +15,7 @@ import math
 from datetime import datetime
 import models
 import fx
+import providers
 
 
 def entry_base(e):
@@ -38,7 +39,7 @@ def post_entry(db, user, *, amount, currency=None, from_account_id, to_account_i
                wallet_linked=True, inferred=False):
     base_currency = user.primary_currency or fx.DEFAULT_BASE_CURRENCY
     currency = currency or base_currency
-    conv = fx.convert_to_base(amount=amount, currency=currency,
+    conv = providers.get_fx().convert_to_base(amount=amount, currency=currency,
                               base_currency=base_currency, receipt_date_str=date)
     entry = models.LedgerEntry(
         user_id=user.id, date=date or "", occurred_at=occurred_at or datetime.utcnow(),

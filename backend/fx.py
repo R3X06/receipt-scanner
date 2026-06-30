@@ -2,11 +2,19 @@ import re
 import requests
 from datetime import datetime, date
 
+from logging_config import logger
+
 # Used only when a user has no primary_currency set.
 DEFAULT_BASE_CURRENCY = "SGD"
 
 FRANKFURTER_URL = "https://api.frankfurter.app"
 REQUEST_TIMEOUT = 6  # seconds
+
+
+class FXUnavailableError(Exception):
+    """Raised when a cross-currency conversion cannot be performed (rate service
+    down / unexpected response). The app refuses the write rather than silently
+    storing the foreign amount as if it were already in the base currency."""
 
 
 def parse_receipt_date(date_str: str):
@@ -56,7 +64,8 @@ def _clamp_date(d: date) -> date:
 
 def convert_to_base(amount: float, currency: str, base_currency: str, receipt_date_str: str):
     """Convert amount/currency to base_currency at the ECB rate for the receipt
-    date (falling back to the save date). Never raises."""
+    date (falling back to the save date). Raises FXUnavailableError if a needed
+    cross-currency rate cannot be obtained (same-currency never calls out)."""
     base_currency = (base_currency or DEFAULT_BASE_CURRENCY).upper()
     currency = (currency or base_currency).upper()
 
@@ -86,10 +95,14 @@ def convert_to_base(amount: float, currency: str, base_currency: str, receipt_da
             "fx_date": data.get("date", use_date.isoformat()),
         }
     except Exception as exc:
-        print(f"FX conversion failed ({currency}->{base_currency}): {exc}")
-        return {
-            "amount_base": round(amount, 2),
-            "base_currency": base_currency,
-            "fx_rate": 1.0,
-            "fx_date": use_date.isoformat(),
-        }
+        # Fail closed: do NOT fabricate a 1:1 rate (that would silently record the
+        # foreign amount as a base-currency amount). Log loudly and refuse the write.
+        logger.error(
+            "fx_conversion_failed",
+            exc_info=True,
+            extra={"from_currency": currency, "to_currency": base_currency,
+                   "date": use_date.isoformat()},
+        )
+        raise FXUnavailableError(
+            f"Could not convert {currency}->{base_currency} for {use_date.isoformat()}"
+        ) from exc

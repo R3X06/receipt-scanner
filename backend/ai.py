@@ -4,6 +4,8 @@ from collections import defaultdict
 
 from openai import OpenAI
 
+from logging_config import logger
+
 # Load .env defensively so OPENAI_API_KEY is available even if nothing else loaded it.
 try:
     from dotenv import load_dotenv
@@ -185,8 +187,8 @@ def suggest_category(merchant, raw_text):
             ],
         )
         guess = resp.choices[0].message.content.strip()
-    except Exception as exc:
-        print(f"AI categorize failed: {exc}")
+    except Exception:
+        logger.warning("ai_categorize_failed", exc_info=True)
         return "Other"
 
     for c in CATEGORIES:
@@ -239,6 +241,6 @@ def extract_fields(raw_text):
         if category not in CATEGORIES:
             category = "Other"
         return {"merchant": merchant, "category": category}
-    except Exception as exc:
-        print(f"AI extract failed: {exc}")
+    except Exception:
+        logger.warning("ai_extract_failed", exc_info=True)
         return {"merchant": "", "category": "Other"}

@@ -1,25 +1,40 @@
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 from database import engine, get_db, Base
 import models
 import auth
 import ocr
+import providers
 import fx
 import ai
 import os
 import ledger
 import types
 from datetime import datetime
+from logging_config import setup_logging, logger
+
+setup_logging()
 
 Base.metadata.create_all(bind=engine)
 
-import migrate
+import migrate  # noqa: E402  -- must follow create_all so tables exist
 migrate.run()
 
 app = FastAPI()
+
+
+@app.exception_handler(fx.FXUnavailableError)
+async def _fx_unavailable_handler(request, exc):
+    # A cross-currency rate could not be obtained; refuse the write loudly
+    # rather than persisting a silently-wrong base amount.
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Exchange rate temporarily unavailable — please try again shortly."},
+    )
 
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 
@@ -33,12 +48,22 @@ app.add_middleware(
 
 
 class SignupRequest(BaseModel):
-    email: str
+    email: EmailStr                      # RFC-valid format (not deliverability)
     password: str
+
+    @field_validator("password")
+    @classmethod
+    def _password_bounds(cls, v: str) -> str:
+        # Gate 1, Decision 1.2: min 8 / max 128, enforced at signup only.
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters.")
+        if len(v) > 128:
+            raise ValueError("Password must be at most 128 characters.")
+        return v
 
 
 class LoginRequest(BaseModel):
-    email: str
+    email: str                           # kept permissive: login only verifies
     password: str
 
 
@@ -87,7 +112,7 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)):
     db.add(models.Goal(user_id=user.id, name="Emergency fund", is_emergency=True,
                        in_distribution=True, coverage_months=6, priority=0))
     db.commit()
-    token = auth.create_token({"sub": user.email})
+    token = auth.create_token({"sub": user.id})
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -96,7 +121,12 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == body.email).first()
     if not user or not auth.verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    token = auth.create_token({"sub": user.email})
+    # Gate 1, Decision 1.1: transparently upgrade legacy bcrypt hashes to Argon2id
+    # on successful login. Old users migrate silently; no forced password reset.
+    if auth.needs_rehash(user.hashed_password):
+        user.hashed_password = auth.hash_password(body.password)
+        db.commit()
+    token = auth.create_token({"sub": user.id})
     return {"access_token": token, "token_type": "bearer"}
 
 def _user_payload(u: models.User):
@@ -149,7 +179,7 @@ async def scan_receipt(
 ):
     contents = await file.read()
     base_currency = current_user.primary_currency or "SGD"
-    raw_text = ocr.extract_text_from_image(contents)
+    raw_text = providers.get_ocr().extract_text(contents)
     parsed = ocr.parse_receipt(raw_text, base_currency=base_currency)
 
     return {
@@ -176,8 +206,8 @@ def ai_ask(
     base_currency = current_user.primary_currency or "SGD"
     try:
         answer = ai.answer_question(body.question.strip(), expenses, base_currency)
-    except Exception as exc:
-        print(f"AI ask failed: {exc}")
+    except Exception:
+        logger.warning("ai_ask_failed", exc_info=True)
         raise HTTPException(
             status_code=502,
             detail="The AI service is unavailable. Check your OpenAI key and credit, then try again."
@@ -200,8 +230,8 @@ def ai_insights(
     }
     try:
         insights = ai.generate_insights(expenses, base_currency, profile=profile)
-    except Exception as exc:
-        print(f"AI insights failed: {exc}")
+    except Exception:
+        logger.warning("ai_insights_failed", exc_info=True)
         raise HTTPException(
             status_code=502,
             detail="The AI service is unavailable. Check your OpenAI key and credit, then try again."
@@ -313,7 +343,7 @@ def ledger_income(body: LedgerIncomeRequest, db: Session = Depends(get_db),
     pyf = None
     if current_user.feature_pay_yourself_first and current_user.pyf_percent:
         base = current_user.primary_currency or "SGD"
-        conv = fx.convert_to_base(amount=body.amount, currency=body.currency or base,
+        conv = providers.get_fx().convert_to_base(amount=body.amount, currency=body.currency or base,
                                   base_currency=base, receipt_date_str=body.date)
         pyf = round(conv["amount_base"] * (current_user.pyf_percent / 100.0), 2)
     return {"id": e.id, "pay_yourself_first_suggested": pyf}
@@ -377,7 +407,7 @@ def update_entry(entry_id: str, body: LedgerEntryUpdate, db: Session = Depends(g
         amount = body.amount if body.amount is not None else e.amount
         currency = body.currency or e.currency or base
         date = body.date if body.date is not None else e.date
-        conv = fx.convert_to_base(amount=amount, currency=currency, base_currency=base, receipt_date_str=date)
+        conv = providers.get_fx().convert_to_base(amount=amount, currency=currency, base_currency=base, receipt_date_str=date)
         e.amount, e.currency, e.date = amount, currency, date
         e.amount_base = conv["amount_base"]
         e.base_currency = conv["base_currency"]
@@ -388,6 +418,10 @@ def update_entry(entry_id: str, body: LedgerEntryUpdate, db: Session = Depends(g
     if body.category is not None:
         e.category = body.category
     if body.from_account_id is not None:
+        # Gate 2: a client-supplied account id must belong to the caller before
+        # it can be referenced. Mirrors the /ledger/expense ownership check.
+        if not _own_account(db, current_user, body.from_account_id):
+            raise HTTPException(status_code=400, detail="Invalid source account")
         e.from_account_id = body.from_account_id
     if body.note is not None:
         e.note = body.note
@@ -474,7 +508,7 @@ def savings_deposit(body: SavingsDepositRequest, db: Session = Depends(get_db),
         raise HTTPException(status_code=400, detail="Amount must be positive.")
     sav = _get_or_create_savings(db, current_user)
     base = current_user.primary_currency or "SGD"
-    conv = fx.convert_to_base(amount=body.amount, currency=body.currency or base,
+    conv = providers.get_fx().convert_to_base(amount=body.amount, currency=body.currency or base,
                               base_currency=base, receipt_date_str=body.date)
     amt_base = conv["amount_base"]
     frm = None
@@ -515,7 +549,7 @@ def savings_withdraw(body: SavingsWithdrawRequest, db: Session = Depends(get_db)
         raise HTTPException(status_code=400, detail="Amount must be positive.")
     sav = _get_or_create_savings(db, current_user)
     base = current_user.primary_currency or "SGD"
-    conv = fx.convert_to_base(amount=body.amount, currency=body.currency or base,
+    conv = providers.get_fx().convert_to_base(amount=body.amount, currency=body.currency or base,
                               base_currency=base, receipt_date_str=body.date)
     amt_base = conv["amount_base"]
     sav_bal = round(ledger.account_balances(db, current_user.id).get(sav.id, 0.0), 2)
