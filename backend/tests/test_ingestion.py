@@ -96,14 +96,47 @@ def test_merchant_descriptor_reveals_label(db, user):
     assert c.counterparty_label == "Starbucks"
 
 
+# --- per-user salt (fix for the shared-salt gap) -----------------------------
+
+def test_counterparty_hash_differs_across_users(db, user):
+    # Same raw identifier, two different users -> different hash, because each
+    # user's salt is independently derived. A DB leak can no longer be
+    # dictionary-attacked against every user with one shared salt.
+    other = models.User(email="other@t.com", hashed_password="x",
+                        primary_currency="SGD", savings_strategy="proportional")
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+
+    salt_a = ingestion.derive_user_salt(user.id)
+    salt_b = ingestion.derive_user_salt(other.id)
+    assert salt_a != salt_b
+
+    normalized = ingestion._norm_counterparty("Jane Tan 91234821")
+    hash_a = ingestion._counterparty_hash(normalized, salt_a)
+    hash_b = ingestion._counterparty_hash(normalized, salt_b)
+    assert hash_a != hash_b
+
+
+def test_same_user_hashes_identically_across_imports(db, user):
+    # The fix must not break matching: the same user hashing the same
+    # counterparty twice (e.g. two PayNow screenshots) still gets the same hash.
+    salt1 = ingestion.derive_user_salt(user.id)
+    salt2 = ingestion.derive_user_salt(user.id)
+    normalized = ingestion._norm_counterparty("Jane Tan 91234821")
+    assert ingestion._counterparty_hash(normalized, salt1) == \
+        ingestion._counterparty_hash(normalized, salt2)
+
+
 # --- §2 dedup keys & policy --------------------------------------------------
 
-def test_content_key_excludes_raw_text_and_is_stable():
+def test_content_key_excludes_raw_text_and_is_stable(user):
     # Same economic txn, different raw descriptor spelling -> SAME content key,
     # because only the salted hash of the counterparty enters the key and the
     # two spellings normalise identically is NOT assumed; here we prove the key
     # ignores fields outside (date, amount, currency, direction, cp-hash).
-    h = ingestion._counterparty_hash("acme")
+    salt = ingestion.derive_user_salt(user.id)
+    h = ingestion._counterparty_hash("acme", salt)
     k1 = ingestion.content_key(date="2026-06-10", amount=12.0, currency="SGD",
                                direction="out", counterparty_hash=h)
     k2 = ingestion.content_key(date="2026-06-10", amount=12.00, currency="sgd",
@@ -127,7 +160,8 @@ def test_exact_native_duplicate_is_auto_skipped(db, user):
 
 def test_content_match_is_flagged_not_skipped(db, user):
     # Compute the content key the pipeline will derive, then pre-post it.
-    chash = ingestion._counterparty_hash(ingestion._norm_counterparty("Shop"))
+    salt = ingestion.derive_user_salt(user.id)
+    chash = ingestion._counterparty_hash(ingestion._norm_counterparty("Shop"), salt)
     ckey = ingestion.content_key(date="2026-06-10", amount=20.0, currency="SGD",
                                  direction="out", counterparty_hash=chash)
     _seed_posted(db, user, idempotency_key=ckey)     # posted via another source, no native key

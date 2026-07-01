@@ -122,6 +122,24 @@ def test_same_transfer_twice_dedups_on_reference(db, user):
     assert c2.status == "duplicate" and c2.review_flag == "exact_duplicate"
 
 
+def test_incomplete_parse_is_flagged_low_confidence(db, user):
+    # Amount-only text: date, ref, and counterparty all fail to extract, so
+    # confidence lands at 0.55, below MIN_IMPORT_CONFIDENCE (0.7).
+    adapter = PayNowAdapter(ocr_provider=FakeOCR("PayNow SGD 50.00"))
+    batch = ingestion.ingest(db, user, adapter, b"<image>")
+    c = db.query(models.ImportCandidate).filter_by(batch_id=batch.id).one()
+    assert c.status == "pending"                    # still staged, not rejected
+    assert c.review_flag == "low_confidence"
+
+
+def test_full_parse_is_not_flagged_low_confidence(db, user):
+    # SAMPLE has amount, date, ref, and counterparty -> confidence 1.0.
+    adapter = PayNowAdapter(ocr_provider=FakeOCR(SAMPLE))
+    batch = ingestion.ingest(db, user, adapter, b"<image>")
+    c = db.query(models.ImportCandidate).filter_by(batch_id=batch.id).one()
+    assert c.review_flag is None
+
+
 # --- endpoint branch ---------------------------------------------------------
 
 def test_paynow_upload_endpoint(client, db):

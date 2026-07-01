@@ -89,19 +89,40 @@ def _extract_date(text):
     return None
 
 
+def _confidence(*, date, ref, counterparty_raw) -> float:
+    """Cheap completeness proxy for a PayNow parse — Vision doesn't expose a
+    numeric OCR confidence, so this counts how many of the optional fields
+    (date, reference, counterparty) were successfully read. Amount is required
+    to reach this point at all, so it isn't scored here. This flags badly
+    incomplete parses for review; it cannot detect a single misread character
+    within a field that was otherwise found."""
+    score = 0.55
+    if date:
+        score += 0.15
+    if ref:
+        score += 0.15
+    if counterparty_raw:
+        score += 0.15
+    return round(score, 2)
+
+
 def extract_paynow(text: str) -> CandidateTxn | None:
     """Deterministically pull one transfer out of OCR'd PayNow text, or None if
     no amount is present (nothing worth staging)."""
     amount = _extract_amount(text or "")
     if not amount or amount <= 0:
         return None
+    date = _extract_date(text)
+    ref = _extract_reference(text)
+    counterparty = _extract_counterparty(text)
     return CandidateTxn(
         amount=amount,
         direction=_extract_direction(text),
-        date=_extract_date(text),
+        date=date,
         currency="SGD",
-        counterparty_raw=_extract_counterparty(text),
-        source_ref=_extract_reference(text),
+        counterparty_raw=counterparty,
+        source_ref=ref,
+        confidence=_confidence(date=date, ref=ref, counterparty_raw=counterparty),
     )
 
 _PAYNOW_MARKERS = re.compile(

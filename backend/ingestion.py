@@ -28,14 +28,25 @@ from typing import Protocol, runtime_checkable
 
 import models
 
-# Stable server-side salt so a counterparty hashes identically across imports
-# (required for matching). Reuses the app secret if a dedicated one isn't set;
-# falls back to a clearly-labelled dev value locally.
-_COUNTERPARTY_SALT = (
+# Stable server-side secret used to derive each user's own counterparty salt
+# (required for matching within a user). Reuses the app secret if a dedicated
+# one isn't set; falls back to a clearly-labelled dev value locally.
+_COUNTERPARTY_SECRET = (
     os.getenv("COUNTERPARTY_SALT")
     or os.getenv("JWT_SECRET")
     or "dev-only-counterparty-salt-do-not-use-in-prod"
 ).encode()
+
+
+def derive_user_salt(user_id: str) -> bytes:
+    """Per-user counterparty salt = HMAC(global secret, user_id).
+
+    Each user's counterparty hashes live in an independent keyspace: a DB leak
+    no longer lets an attacker dictionary-attack every user's merchant/PayNow
+    identifiers with one shared salt, only one user's at a time (and only with
+    that user's derived salt, not the global secret itself).
+    """
+    return hmac.new(_COUNTERPARTY_SECRET, str(user_id).encode(), hashlib.sha256).digest()
 
 
 # --------------------------------------------------------------------------- DTO
@@ -94,10 +105,10 @@ def _norm_counterparty(raw) -> str:
 
 
 # --------------------------------------------------------- de-identification (J2)
-def _counterparty_hash(normalized: str) -> str | None:
+def _counterparty_hash(normalized: str, user_salt: bytes) -> str | None:
     if not normalized:
         return None
-    return hmac.new(_COUNTERPARTY_SALT, normalized.encode(),
+    return hmac.new(user_salt, normalized.encode(),
                     hashlib.sha256).hexdigest()[:32]
 
 
@@ -113,7 +124,7 @@ def _mask(raw: str | None, *, reveal_label: bool) -> str:
     return "(hidden)"
 
 
-def deidentify_counterparty(raw, *, reveal_label: bool):
+def deidentify_counterparty(raw, *, reveal_label: bool, user_salt: bytes):
     """Return (label, hash, masked) — never the raw name/identifier (J2).
 
     reveal_label=True  -> merchant descriptors: the cleaned descriptor is a
@@ -122,7 +133,7 @@ def deidentify_counterparty(raw, *, reveal_label: bool):
                           label is auto-filled; only hash + masked survive.
     """
     normalized = _norm_counterparty(raw)
-    chash = _counterparty_hash(normalized)
+    chash = _counterparty_hash(normalized, user_salt)
     masked = _mask(raw, reveal_label=reveal_label)
     label = (raw or "").strip()[:60] if (reveal_label and raw) else None
     return label, chash, masked
@@ -154,6 +165,15 @@ def content_key(*, date, amount, currency, direction, counterparty_hash) -> str:
         counterparty_hash or "",
     ])
     return "c:" + hashlib.sha256(basis.encode()).hexdigest()[:32]
+
+
+# --------------------------------------------------------------- confidence gate
+# Below this, a parse is missing enough optional fields that it's flagged for
+# human review rather than trusted as clean. This is a completeness proxy, not
+# an OCR-accuracy check — it can't catch a single misread character, only a
+# parse that came back badly incomplete. Per-character misreads are covered
+# structurally instead: nothing here ever auto-posts (Property D).
+MIN_IMPORT_CONFIDENCE = 0.7
 
 
 # ------------------------------------------------------- duplicate classification
@@ -209,6 +229,7 @@ def ingest(db, user, adapter: IngestionAdapter, raw: bytes, *, attested=False):
 
     reveal = bool(getattr(adapter, "reveal_counterparty_label", False))
     default_currency = (user.primary_currency or "SGD")
+    user_salt = derive_user_salt(user.id)
     posted_native = _posted_native_keys(db, user)
     posted_content = _posted_content_keys(db, user)
     seen_native: set = set()
@@ -222,13 +243,18 @@ def ingest(db, user, adapter: IngestionAdapter, raw: bytes, *, attested=False):
         amount = round(float(t.amount), 2)
 
         label, chash, masked = deidentify_counterparty(
-            t.counterparty_raw, reveal_label=reveal)
+            t.counterparty_raw, reveal_label=reveal, user_salt=user_salt)
         nkey = native_key(adapter.source_type, t.source_ref)
         ckey = content_key(date=date, amount=amount, currency=currency,
                            direction=direction, counterparty_hash=chash)
 
         status, flag = classify_duplicate(
             nkey, ckey, posted_native, posted_content, seen_native, seen_content)
+
+        # Low-confidence parses get flagged for review too, but never override
+        # a duplicate flag — exact/possible duplicate is the higher-priority signal.
+        if flag is None and t.confidence is not None and t.confidence < MIN_IMPORT_CONFIDENCE:
+            flag = "low_confidence"
 
         db.add(models.ImportCandidate(
             user_id=user.id, batch_id=batch.id,
