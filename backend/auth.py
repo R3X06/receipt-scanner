@@ -96,3 +96,26 @@ def get_current_user(
     if user is None:
         raise credentials_exception
     return user
+
+
+def get_owned(db: Session, model, obj_id: str, user: models.User):
+    """The single ownership accessor (design lock §3.5, Property K).
+
+    Every lookup is filtered by user_id, so this structurally cannot return
+    another user's row — there is no code path that returns a record the caller
+    doesn't own. Raises 404 (not 403) so the existence of another user's record
+    is never revealed. Use this for every per-user fetch (import batches /
+    candidates, and anything else) instead of re-deriving the filter at each
+    call site, which is how the original mutation-ownership gap arose.
+    """
+    obj = (
+        db.query(model)
+        .filter(model.id == obj_id, model.user_id == user.id)
+        .first()
+    )
+    if obj is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{model.__name__} not found",
+        )
+    return obj

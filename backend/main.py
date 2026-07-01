@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -13,8 +13,14 @@ import fx
 import ai
 import os
 import ledger
+import ingestion
+import imports_service
+import csv_adapter
+import paynow_adapter
+import pdf_adapter
 import types
-from datetime import datetime
+from datetime import datetime, timedelta
+from clock import utcnow
 from logging_config import setup_logging, logger
 
 setup_logging()
@@ -189,6 +195,52 @@ async def scan_receipt(
         "category": "Uncategorized",
         "currency": parsed["currency"],
         "raw_ocr_text": raw_text,
+        "parsed_ok": parsed["parsed_ok"],
+    }
+
+@app.post("/scan")
+async def scan_image(
+    file: UploadFile = File(...),
+    attested: bool = Form(False),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """One OCR pass, then route: a PayNow screenshot -> the import pipeline
+    (staging + review); anything else -> a receipt draft (the instant-expense
+    flow). Classifying the text we already OCR'd avoids a second OCR call."""
+    contents = await file.read()
+    if len(contents) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="File too large.")
+    raw_text = providers.get_ocr().extract_text(contents)
+
+    if paynow_adapter.looks_like_paynow(raw_text):
+        if not attested:                       # Property M: importing third-party data
+            raise HTTPException(status_code=400,
+                                detail="You must attest that you are authorised to import this transfer.")
+        txn = paynow_adapter.extract_paynow(raw_text)
+        if not txn:
+            raise HTTPException(status_code=422,
+                                detail="This looks like a PayNow transfer but no amount could be read.")
+        window_start = utcnow() - timedelta(hours=1)   # Property L: rate cap
+        recent = db.query(models.ImportBatch).filter(
+            models.ImportBatch.user_id == current_user.id,
+            models.ImportBatch.imported_at >= window_start).count()
+        if recent >= MAX_IMPORTS_PER_HOUR:
+            raise HTTPException(status_code=429, detail="Too many imports — please wait a bit and retry.")
+        batch = ingestion.ingest(
+            db, current_user,
+            _PreparsedAdapter(paynow_adapter.PayNowAdapter(), [txn]),
+            contents, attested=attested)
+        return {"kind": "paynow", "batch": _batch_view(db, batch)}
+
+    # receipt draft — reuse the /ocr logic on the text we already have
+    base_currency = current_user.primary_currency or "SGD"
+    parsed = ocr.parse_receipt(raw_text, base_currency=base_currency)
+    return {
+        "kind": "receipt",
+        "merchant": parsed["merchant"], "amount": parsed["amount"],
+        "date": parsed["date"], "category": "Uncategorized",
+        "currency": parsed["currency"], "raw_ocr_text": raw_text,
         "parsed_ok": parsed["parsed_ok"],
     }
 
@@ -733,3 +785,169 @@ def delete_goal_config(goal_id: str, db: Session = Depends(get_db),
     db.delete(g)
     db.commit()
     return {"ok": True}
+
+# ============================================================================
+# Imports: bulk/scan ingestion — upload -> review -> post (design lock §1-§3)
+# Every handler is get_owned-scoped (Property K). Candidates never expose the
+# raw hash or any raw text (J1/J2).
+# ============================================================================
+
+MAX_IMPORT_BYTES = 5 * 1024 * 1024        # Property L: reject oversized uploads
+MAX_IMPORT_ROWS = 5000                    # Property L: reject huge batches (denial-of-wallet)
+MAX_IMPORTS_PER_HOUR = 10                 # Property L: per-user rate cap
+
+
+class CandidateEdit(BaseModel):
+    category: Optional[str] = None
+    counterparty_label: Optional[str] = None
+    amount: Optional[float] = None
+    date: Optional[str] = None
+    direction: Optional[str] = None
+    currency: Optional[str] = None
+
+
+def _candidate_view(c: models.ImportCandidate):
+    # Deliberately omits counterparty_hash and any raw text (J1/J2).
+    return {
+        "id": c.id, "batch_id": c.batch_id,
+        "date": c.date, "amount": c.amount, "currency": c.currency,
+        "direction": c.direction, "category": c.category,
+        "counterparty_label": c.counterparty_label,
+        "counterparty_masked": c.counterparty_masked,
+        "status": c.status, "review_flag": c.review_flag,
+        "source_ref": c.source_ref, "posted_entry_id": c.posted_entry_id,
+    }
+
+
+def _batch_view(db, batch: models.ImportBatch, *, include_candidates=True):
+    out = {
+        "id": batch.id, "source_type": batch.source_type, "status": batch.status,
+        "attested": batch.attested, "imported_at": str(batch.imported_at),
+        "count_total": batch.count_total, "count_posted": batch.count_posted,
+        "count_duplicate": batch.count_duplicate, "count_rejected": batch.count_rejected,
+    }
+    if include_candidates:
+        cands = db.query(models.ImportCandidate).filter_by(
+            batch_id=batch.id).order_by(models.ImportCandidate.date).all()
+        out["candidates"] = [_candidate_view(c) for c in cands]
+    return out
+
+
+@app.post("/imports")
+async def create_import(
+    file: UploadFile = File(...),
+    source_type: str = Form("csv"),
+    attested: bool = Form(False),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    if not attested:                       # Property M: authorisation attestation required
+        raise HTTPException(status_code=400,
+                            detail="You must attest that you are authorised to import this data.")
+    if source_type not in ("csv", "paynow", "pdf"):
+        raise HTTPException(status_code=400, detail=f"Unsupported source_type '{source_type}'.")
+
+    # Property L: rate cap over the trailing hour
+    window_start = utcnow() - timedelta(hours=1)
+    recent = db.query(models.ImportBatch).filter(
+        models.ImportBatch.user_id == current_user.id,
+        models.ImportBatch.imported_at >= window_start,
+    ).count()
+    if recent >= MAX_IMPORTS_PER_HOUR:
+        raise HTTPException(status_code=429, detail="Too many imports — please wait a bit and retry.")
+
+    raw = await file.read()
+    if len(raw) > MAX_IMPORT_BYTES:        # Property L: size cap
+        raise HTTPException(status_code=413, detail="File too large.")
+
+    if source_type == "csv":
+        adapter = csv_adapter.CsvAdapter()
+        parsed = adapter.parse(raw)
+        if len(parsed) > MAX_IMPORT_ROWS:  # Property L: row cap (denial-of-wallet)
+            raise HTTPException(status_code=413,
+                                detail=f"Too many rows ({len(parsed)}); limit is {MAX_IMPORT_ROWS}.")
+        empty_detail = "No transactions could be parsed from this file."
+    elif source_type == "pdf":
+        adapter = pdf_adapter.PdfAdapter()
+        parsed = adapter.parse(raw)
+        if len(parsed) > MAX_IMPORT_ROWS:  # Property L: row cap
+            raise HTTPException(status_code=413,
+                                detail=f"Too many rows ({len(parsed)}); limit is {MAX_IMPORT_ROWS}.")
+        empty_detail = ("No transactions could be read from this PDF. "
+                        "If it's a scanned image or an unusual layout, try the CSV export instead.")
+    else:                                  # paynow: OCR a transfer screenshot
+        adapter = paynow_adapter.PayNowAdapter()
+        parsed = adapter.parse(raw)        # OCR happens once here
+        empty_detail = "Could not read a PayNow transfer from this screenshot."
+
+    if not parsed:
+        raise HTTPException(status_code=422, detail=empty_detail)
+
+    # raw bytes are not persisted; they die with this request (Property J1)
+    batch = ingestion.ingest(db, current_user, _PreparsedAdapter(adapter, parsed), raw,
+                             attested=attested)
+    logger.info("import_created", extra={"batch_id": batch.id, "source": source_type,
+                                         "rows": batch.count_total,
+                                         "duplicates": batch.count_duplicate})
+    return _batch_view(db, batch)
+
+
+class _PreparsedAdapter:
+    """Reuse the already-parsed rows (so we don't parse twice) while presenting
+    the real adapter's source_type / label policy to the pipeline."""
+    def __init__(self, inner, parsed):
+        self.source_type = inner.source_type
+        self.reveal_counterparty_label = inner.reveal_counterparty_label
+        self._parsed = parsed
+
+    def parse(self, raw):
+        return self._parsed
+
+
+@app.get("/imports/{batch_id}")
+def get_import(batch_id: str, db: Session = Depends(get_db),
+               current_user: models.User = Depends(auth.get_current_user)):
+    batch = auth.get_owned(db, models.ImportBatch, batch_id, current_user)
+    return _batch_view(db, batch)
+
+
+@app.patch("/imports/candidates/{candidate_id}")
+def edit_candidate(candidate_id: str, body: CandidateEdit,
+                   db: Session = Depends(get_db),
+                   current_user: models.User = Depends(auth.get_current_user)):
+    c = auth.get_owned(db, models.ImportCandidate, candidate_id, current_user)
+    c = imports_service.apply_edit(
+        db, current_user, c,
+        category=body.category, counterparty_label=body.counterparty_label,
+        amount=body.amount, date=body.date, direction=body.direction,
+        currency=body.currency)
+    return _candidate_view(c)
+
+
+@app.post("/imports/candidates/{candidate_id}/reject")
+def reject_candidate(candidate_id: str, db: Session = Depends(get_db),
+                     current_user: models.User = Depends(auth.get_current_user)):
+    c = auth.get_owned(db, models.ImportCandidate, candidate_id, current_user)
+    if c.status in ("confirmed",):
+        raise HTTPException(status_code=409, detail="Cannot reject an already-posted candidate.")
+    c.status, c.review_flag = "rejected", None
+    db.commit()
+    return _candidate_view(c)
+
+
+@app.post("/imports/{batch_id}/confirm")
+def confirm_import(batch_id: str, db: Session = Depends(get_db),
+                   current_user: models.User = Depends(auth.get_current_user)):
+    batch = auth.get_owned(db, models.ImportBatch, batch_id, current_user)
+    result = imports_service.post_batch(db, current_user, batch)
+    logger.info("import_confirmed", extra={"batch_id": batch.id, **result})
+    return {**result, "batch": _batch_view(db, batch, include_candidates=False)}
+
+
+@app.delete("/imports/{batch_id}")
+def delete_import(batch_id: str, db: Session = Depends(get_db),
+                  current_user: models.User = Depends(auth.get_current_user)):
+    batch = auth.get_owned(db, models.ImportBatch, batch_id, current_user)
+    result = imports_service.delete_import(db, current_user, batch)
+    logger.info("import_deleted", extra=result)
+    return {"ok": True, **result}

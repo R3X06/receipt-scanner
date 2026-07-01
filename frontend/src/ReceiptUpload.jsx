@@ -19,13 +19,13 @@ import { Upload, CheckCircle2, AlertTriangle } from "lucide-react";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 
-export default function ReceiptUpload({ onExpenseAdded }) {
+export default function ReceiptUpload({ onExpenseAdded, initialDraft = null }) {
   const { token } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [inputKey, setInputKey] = useState(0);
 
-  const [draft, setDraft] = useState(null);
+  const [draft, setDraft] = useState(initialDraft);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 

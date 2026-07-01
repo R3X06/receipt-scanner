@@ -1,15 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { useAuth } from "./AuthContext";
 import { getExpenses } from "./api";
 import { CATEGORIES } from "./constants";
 import ExpenseForm from "./ExpenseForm";
-import ReceiptUpload from "./ReceiptUpload";
-import Charts from "./Charts";
-import AskAI from "./AskAI";
-import Insights from "./Insights";
+const ScanImport = lazy(() => import("./ScanImport"));
+const Charts = lazy(() => import("./Charts"));
+const AskAI = lazy(() => import("./AskAI"));
+const Insights = lazy(() => import("./Insights"));
+const Loading = () => (
+  <div className="py-10 text-center text-sm text-muted-foreground">Loading…</div>
+);
 import ProfileCard from "./ProfileCard";
 import ExpenseList from "./ExpenseList";
-import Settings from "./Settings";
+const Settings = lazy(() => import("./Settings"));
 import WalletCard from "./WalletCard";
 import SavingsCard from "./SavingsCard";
 import ReconciliationCard from "./ReconciliationCard";
@@ -204,7 +207,9 @@ export default function Dashboard() {
             )}
 
             {/* charts */}
-            <Charts expenses={expenses} baseCurrency={baseCurrency} />
+            <Suspense fallback={<Loading />}>
+              <Charts expenses={expenses} baseCurrency={baseCurrency} />
+            </Suspense>
 
             {/* collapsible expenses */}
             <Card className={`${GLASS} overflow-hidden rounded-2xl p-0`}>
@@ -249,8 +254,10 @@ export default function Dashboard() {
           onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
         >
-          <DialogTitle className="sr-only">Scan a receipt</DialogTitle>
-          <ReceiptUpload onExpenseAdded={handleExpenseAddedAndClose} />
+          <DialogTitle className="sr-only">Scan or import</DialogTitle>
+          <Suspense fallback={<Loading />}>
+            <ScanImport onExpenseAdded={handleExpenseAddedAndClose} onDone={() => setOpenDialog(null)} />
+          </Suspense>
         </DialogContent>
       </Dialog>
 
@@ -272,14 +279,18 @@ export default function Dashboard() {
           onEscapeKeyDown={(e) => e.preventDefault()}
         >
           <DialogTitle className="sr-only">Settings</DialogTitle>
-          <Settings onClose={() => setOpenDialog(null)} />
+          <Suspense fallback={<Loading />}>
+            <Settings onClose={() => setOpenDialog(null)} />
+          </Suspense>
         </DialogContent>
       </Dialog>
 
       <Dialog open={openDialog === "ask"} onOpenChange={(o) => setOpenDialog(o ? "ask" : null)}>
         <DialogContent className={DIALOG}>
           <DialogTitle className="sr-only">Ask AI</DialogTitle>
-          <AskAI />
+          <Suspense fallback={<Loading />}>
+            <AskAI />
+          </Suspense>
         </DialogContent>
       </Dialog>
 
@@ -300,7 +311,9 @@ export default function Dashboard() {
       <Dialog open={openDialog === "insights"} onOpenChange={(o) => setOpenDialog(o ? "insights" : null)}>
         <DialogContent className={DIALOG}>
           <DialogTitle className="sr-only">Insights</DialogTitle>
-          <Insights />
+          <Suspense fallback={<Loading />}>
+            <Insights />
+          </Suspense>
         </DialogContent>
       </Dialog>
 

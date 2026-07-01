@@ -53,6 +53,18 @@ STATEMENTS = [
     "UPDATE ledger_entries SET inferred = FALSE WHERE inferred IS NULL",
     "UPDATE ledger_entries SET occurred_at = created_at WHERE occurred_at IS NULL",
 
+    # --- ledger_entries: import dedup key (ingestion redesign §2). The new
+    #     staging tables (import_batches / import_candidates) are created by
+    #     create_all() in main.py, so only this existing table needs altering. ---
+    "ALTER TABLE ledger_entries ADD COLUMN idempotency_key VARCHAR",
+    "CREATE INDEX IF NOT EXISTS ix_ledger_entries_idempotency_key ON ledger_entries (idempotency_key)",
+    "ALTER TABLE ledger_entries ADD COLUMN source_key VARCHAR",
+    "CREATE INDEX IF NOT EXISTS ix_ledger_entries_source_key ON ledger_entries (source_key)",
+    # import_candidates is created fresh by create_all(); this ALTER only fires
+    # if the table predates the review_flag column on an already-migrated DB.
+    "ALTER TABLE import_candidates ADD COLUMN review_flag VARCHAR",
+    "ALTER TABLE import_candidates ADD COLUMN posted_entry_id VARCHAR",
+
     # --- drop legacy tables once the ledger is the single source of truth ---
     "DROP TABLE IF EXISTS expenses",
     "DROP TABLE IF EXISTS savings_transactions",

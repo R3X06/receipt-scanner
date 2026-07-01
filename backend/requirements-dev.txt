@@ -2,3 +2,4 @@
 pytest
 httpx          # required by FastAPI TestClient — used by the endpoint tests
 ruff           # linter, run in CI
+reportlab      # test-only: generate sample PDFs for the PDF adapter tests

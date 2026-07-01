@@ -33,6 +33,8 @@ class User(Base):
     ledger_entries = relationship("LedgerEntry", back_populates="owner")
     categories = relationship("Category", back_populates="owner")
     goal_configs = relationship("Goal", back_populates="owner")
+    import_batches = relationship("ImportBatch", back_populates="owner")
+    import_candidates = relationship("ImportCandidate", back_populates="owner")
 
 
 # ============== THE LEDGER (new foundation) ==============
@@ -79,6 +81,8 @@ class LedgerEntry(Base):
     parsed_ok = Column(Boolean, nullable=True)
     allocation_strategy = Column(String, nullable=True)   # 'manual'|'waterfall'|'proportional'|'pyf'
     batch_id = Column(String, nullable=True)              # groups entries from one allocation event
+    idempotency_key = Column(String, index=True, nullable=True)  # import dedup: cross-source CONTENT hash; NULL for pre-import rows
+    source_key = Column(String, index=True, nullable=True)        # import dedup: exact source-native key ('csv:REF'); NULL when source had no native id
     created_at = Column(DateTime, default=utcnow)
 
     owner = relationship("User", back_populates="ledger_entries")
@@ -118,3 +122,67 @@ class Goal(Base):
     created_at = Column(DateTime, default=utcnow)
 
     owner = relationship("User", back_populates="goal_configs")
+
+
+# ============== INGESTION STAGING (redesign) ==============
+# Pending candidates from bulk/scan imports live HERE, never in the ledger:
+# they are *proposals*, not ledger truth, so the immutable LedgerEntry log stays
+# pure (design lock §3.5, Property D). Confirmed candidates flow into LedgerEntry
+# via the normal append path, tagged with batch_id + idempotency_key.
+
+class ImportBatch(Base):
+    """One import event (one uploaded CSV / one scanned screenshot). Holds NO
+    durable raw artifact — raw bytes die with the request (Property J1)."""
+    __tablename__ = "import_batches"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    source_type = Column(String, nullable=False)         # 'csv' | 'paynow' | ...
+    status = Column(String, default="pending")           # 'pending' | 'posted' | 'discarded'
+    attested = Column(Boolean, default=False)            # Property M: upload-authorisation consent record
+    count_total = Column(Integer, default=0)
+    count_posted = Column(Integer, default=0)
+    count_duplicate = Column(Integer, default=0)
+    count_rejected = Column(Integer, default=0)
+    imported_at = Column(DateTime, default=utcnow)
+
+    owner = relationship("User", back_populates="import_batches")
+    candidates = relationship("ImportCandidate", back_populates="batch")
+
+
+class ImportCandidate(Base):
+    """A single parsed, not-yet-confirmed transaction awaiting human review.
+    Carries NO raw counterparty name and NO NRIC/phone-linked identifier
+    (Property J2): only a user label, a salted one-way hash for matching, and a
+    masked display string. Amounts are parsed deterministically, never produced
+    by the LLM (Property A)."""
+    __tablename__ = "import_candidates"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    batch_id = Column(String, ForeignKey("import_batches.id"), nullable=False)
+
+    # --- dedup keys (design lock §2) ---
+    source_ref = Column(String, nullable=True)           # source-native ID (PayNow txn id / statement ref) — exact, auto-skip
+    idempotency_key = Column(String, index=True)         # content hash — cross-source, flags for review
+
+    # --- parsed transaction ---
+    date = Column(String, nullable=True)                 # ISO calendar day
+    amount = Column(Float, nullable=False)
+    currency = Column(String, nullable=True)
+    direction = Column(String, nullable=False)           # 'in' | 'out'
+    category = Column(String, nullable=True)
+
+    # --- de-identified counterparty (Property J2) ---
+    counterparty_label = Column(String, nullable=True)   # user-supplied label
+    counterparty_hash = Column(String, nullable=True)    # salted one-way hash (matching only)
+    counterparty_masked = Column(String, nullable=True)  # safe display, e.g. 'transfer ***8821'
+
+    confidence = Column(Float, nullable=True)
+    status = Column(String, default="pending")           # 'pending' | 'confirmed' | 'rejected' | 'duplicate'
+    review_flag = Column(String, nullable=True)          # reviewer signal: 'exact_duplicate' | 'possible_duplicate' | 'fx_failed' | None (extensible)
+    posted_entry_id = Column(String, ForeignKey("ledger_entries.id"), nullable=True)  # set on confirm -> provenance link to the posted LedgerEntry
+    created_at = Column(DateTime, default=utcnow)
+
+    owner = relationship("User", back_populates="import_candidates")
+    batch = relationship("ImportBatch", back_populates="candidates")

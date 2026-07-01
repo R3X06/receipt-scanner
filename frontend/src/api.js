@@ -336,3 +336,83 @@ export async function configureEmergency(token, payload) {
   if (!res.ok) throw new Error(data.detail || "Failed to update emergency fund");
   return data; // fresh goals_view
 }
+
+// ---- imports: bulk/scan ingestion (upload -> review -> post) ----
+export async function scanImage(token, file, attested) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("attested", attested ? "true" : "false");
+  const res = await fetch(`${API_URL}/scan`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Scan failed");
+  return data; // { kind: "receipt", ... } | { kind: "paynow", batch }
+}
+
+export async function createImport(token, file, sourceType, attested) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("source_type", sourceType);
+  fd.append("attested", attested ? "true" : "false");
+  const res = await fetch(`${API_URL}/imports`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Import failed");
+  return data;
+}
+
+export async function getImport(token, id) {
+  const res = await fetch(`${API_URL}/imports/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to load import");
+  return data;
+}
+
+export async function editCandidate(token, id, patch) {
+  const res = await fetch(`${API_URL}/imports/candidates/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(patch),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to edit candidate");
+  return data;
+}
+
+export async function rejectCandidate(token, id) {
+  const res = await fetch(`${API_URL}/imports/candidates/${id}/reject`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to reject candidate");
+  return data;
+}
+
+export async function confirmImport(token, id) {
+  const res = await fetch(`${API_URL}/imports/${id}/confirm`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to confirm import");
+  return data;
+}
+
+export async function deleteImport(token, id) {
+  const res = await fetch(`${API_URL}/imports/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to delete import");
+  return data;
+}
