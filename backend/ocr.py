@@ -38,7 +38,9 @@ def extract_text_from_image(image_bytes: bytes) -> str:
             "features": [{"type": "TEXT_DETECTION"}]
         }]
     }
-    res = requests.post(url, json=payload)
+    # 20s: OCR on an image can legitimately take longer than a typical API call,
+    # but an unbounded request risks hanging a worker indefinitely if Vision stalls.
+    res = requests.post(url, json=payload, timeout=20)
     data = res.json()
     try:
         return data["responses"][0]["fullTextAnnotation"]["text"]
