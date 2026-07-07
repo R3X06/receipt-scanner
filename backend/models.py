@@ -27,6 +27,16 @@ class User(Base):
     feature_pay_yourself_first = Column(Boolean, default=True)
     pyf_percent = Column(Float, nullable=True)   # pay-yourself-first: % of logged income to auto-allocate
     savings_strategy = Column(String, default="proportional")  # 'waterfall'|'proportional'|'even' — splits the remainder after reserves
+    # --- email verification (hash stored, never the raw token; single-use, time-limited) ---
+    email_verified = Column(Boolean, default=False)
+    verification_token_hash = Column(String, nullable=True)
+    verification_token_expires = Column(DateTime, nullable=True)
+    # --- password reset (same hash-at-rest / single-use / time-limited pattern) ---
+    reset_token_hash = Column(String, nullable=True)
+    reset_token_expires = Column(DateTime, nullable=True)
+    # --- session invalidation: bumped on password reset so JWTs issued before
+    # the reset stop verifying, even though they haven't expired yet ---
+    token_version = Column(Integer, default=0)
     created_at = Column(DateTime, default=utcnow)
     # ledger
     accounts = relationship("Account", back_populates="owner")

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { login, signup } from "./api";
+import { login, signup, forgotPassword } from "./api";
 import { useAuth } from "./AuthContext";
 import { CURRENCIES } from "./constants";
 
@@ -25,6 +25,8 @@ import {
 export default function Login() {
   const { saveToken } = useAuth();
   const [isSignup, setIsSignup] = useState(false);
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [currency, setCurrency] = useState("SGD");
@@ -45,6 +47,89 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleForgotSubmit(e) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await forgotPassword(email);
+      setForgotSent(true);
+    } catch (err) {
+      // Backend already returns a generic message either way — this only
+      // fires on a genuine network/server failure, not "email not found".
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function backToSignIn() {
+    setForgotMode(false);
+    setForgotSent(false);
+    setError("");
+  }
+
+  if (forgotMode) {
+    return (
+      <div className="relative min-h-screen flex items-center justify-center p-4">
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(600px circle at 50% 50%, rgba(49, 15, 81, 0.12), transparent 0%)",
+          }}
+        />
+
+        <Card className="relative z-10 w-full max-w-sm rounded-2xl border-white/4 bg-white/[0.0] backdrop-blur-xl shadow-2xl shadow-black/30">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl font-sans tracking-tight text-glow2">
+              Reset password
+            </CardTitle>
+            <CardDescription className="text-glow2">
+              {forgotSent
+                ? "If that email is registered, a reset link has been sent."
+                : "Enter your email and we'll send you a reset link."}
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            {!forgotSent && (
+              <form onSubmit={handleForgotSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="forgot-email" className="text-glow font-sans">Email</Label>
+                  <Input
+                    id="forgot-email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {error && <p className="text-sm text-destructive">{error}</p>}
+
+                <Button type="submit" disabled={loading} className="w-full font-medium text-glow2">
+                  {loading ? "Please wait..." : "Send reset link"}
+                </Button>
+              </form>
+            )}
+          </CardContent>
+
+          <CardFooter className="justify-center">
+            <button
+              type="button"
+              onClick={backToSignIn}
+              className="text-sm text-primary font-medium hover:underline"
+            >
+              Back to sign in
+            </button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
   }
 
   return (
@@ -83,7 +168,18 @@ export default function Login() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-glow font-sans">Password</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password" className="text-glow font-sans">Password</Label>
+                {!isSignup && (
+                  <button
+                    type="button"
+                    onClick={() => setForgotMode(true)}
+                    className="text-xs text-primary font-medium hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
               <Input
                 id="password"
                 type="password"

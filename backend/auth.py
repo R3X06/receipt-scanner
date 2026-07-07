@@ -1,3 +1,6 @@
+import hashlib
+import secrets
+import sys
 from datetime import timedelta
 from clock import utcnow
 from jose import JWTError, jwt
@@ -5,9 +8,20 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from database import get_db
 import models
 import os
+
+# ---------------------------------------------------------------------------
+# Rate limiting — in-memory (single Railway instance; no Redis needed at this
+# scale). Disabled under pytest: the endpoint test suite calls /auth/login and
+# /auth/signup dozens of times per run and would otherwise start failing on
+# 429s partway through, unrelated to what each test is actually checking.
+# ---------------------------------------------------------------------------
+TESTING = "pytest" in sys.modules
+limiter = Limiter(key_func=get_remote_address, enabled=not TESTING)
 
 # ---------------------------------------------------------------------------
 # JWT signing secret — environment-aware hard-fail (Gate 1, Decision 1.3)
@@ -67,6 +81,21 @@ def needs_rehash(hashed: str) -> bool:
     return pwd_context.needs_update(hashed)
 
 
+def generate_token() -> str:
+    """A single-use, unguessable token for email verification / password reset
+    links. 32 bytes of URL-safe randomness — not a password, no need for a
+    slow hash, but never stored raw (see hash_token)."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_token(token: str) -> str:
+    """SHA-256 of a verification/reset token, for at-rest storage. A fast hash
+    is correct here (unlike passwords): the token already has 256 bits of
+    entropy, so there's nothing for an attacker to brute-force even against a
+    stolen DB row — the threat model is DB leakage, not offline guessing."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
 def create_token(data: dict):
     to_encode = data.copy()
     expire = utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -89,11 +118,17 @@ def get_current_user(
         user_id: str = payload.get("sub")
         if user_id is None:
             raise credentials_exception
+        token_version = payload.get("ver", 0)
     except JWTError:
         raise credentials_exception
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if user is None:
+        raise credentials_exception
+    # A password reset bumps token_version, so a JWT minted before the reset
+    # stops verifying immediately instead of staying valid until it expires
+    # (up to a week away) — closes the "stolen token survives a reset" gap.
+    if (user.token_version or 0) != token_version:
         raise credentials_exception
     return user
 

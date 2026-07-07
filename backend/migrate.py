@@ -69,6 +69,16 @@ STATEMENTS = [
     "DROP TABLE IF EXISTS expenses",
     "DROP TABLE IF EXISTS savings_transactions",
     "DROP TABLE IF EXISTS income_transactions",
+
+    # --- users: email verification + password reset + session invalidation ---
+    "ALTER TABLE users ADD COLUMN email_verified BOOLEAN",
+    "UPDATE users SET email_verified = FALSE WHERE email_verified IS NULL",
+    "ALTER TABLE users ADD COLUMN verification_token_hash VARCHAR",
+    "ALTER TABLE users ADD COLUMN verification_token_expires TIMESTAMP",
+    "ALTER TABLE users ADD COLUMN reset_token_hash VARCHAR",
+    "ALTER TABLE users ADD COLUMN reset_token_expires TIMESTAMP",
+    "ALTER TABLE users ADD COLUMN token_version INTEGER",
+    "UPDATE users SET token_version = 0 WHERE token_version IS NULL",
 ]
 
 

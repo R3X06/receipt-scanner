@@ -1,9 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
 from database import engine, get_db, Base
 import models
 import auth
@@ -11,6 +13,7 @@ import ocr
 import providers
 import fx
 import ai
+import email_utils
 import os
 import ledger
 import ingestion
@@ -31,6 +34,9 @@ import migrate  # noqa: E402  -- must follow create_all so tables exist
 migrate.run()
 
 app = FastAPI()
+
+app.state.limiter = auth.limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 @app.exception_handler(fx.FXUnavailableError)
@@ -73,6 +79,28 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def _password_bounds(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters.")
+        if len(v) > 128:
+            raise ValueError("Password must be at most 128 characters.")
+        return v
+
+
 class AskRequest(BaseModel):
     question: str
 
@@ -95,7 +123,8 @@ def health():
 
 
 @app.post("/auth/signup")
-def signup(body: SignupRequest, db: Session = Depends(get_db)):
+@auth.limiter.limit("10/hour")
+def signup(request: Request, body: SignupRequest, db: Session = Depends(get_db)):
     existing = db.query(models.User).filter(models.User.email == body.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -117,13 +146,20 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)):
     # signup and the lazy-ensure path; users can opt out via /goals/emergency)
     db.add(models.Goal(user_id=user.id, name="Emergency fund", is_emergency=True,
                        in_distribution=True, coverage_months=6, priority=0))
+    # Email verification: generate + store only the hash, email the raw token.
+    # Best-effort — a broken email provider must not block account creation.
+    verify_token = auth.generate_token()
+    user.verification_token_hash = auth.hash_token(verify_token)
+    user.verification_token_expires = utcnow() + timedelta(hours=24)
     db.commit()
-    token = auth.create_token({"sub": user.id})
+    email_utils.send_verification_email(user.email, verify_token)
+    token = auth.create_token({"sub": user.id, "ver": user.token_version or 0})
     return {"access_token": token, "token_type": "bearer"}
 
 
 @app.post("/auth/login")
-def login(body: LoginRequest, db: Session = Depends(get_db)):
+@auth.limiter.limit("5/minute")
+def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == body.email).first()
     if not user or not auth.verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -132,13 +168,72 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     if auth.needs_rehash(user.hashed_password):
         user.hashed_password = auth.hash_password(body.password)
         db.commit()
-    token = auth.create_token({"sub": user.id})
+    token = auth.create_token({"sub": user.id, "ver": user.token_version or 0})
     return {"access_token": token, "token_type": "bearer"}
+
+
+@app.post("/auth/verify-email")
+def verify_email(body: VerifyEmailRequest, db: Session = Depends(get_db)):
+    token_hash = auth.hash_token(body.token)
+    user = db.query(models.User).filter(models.User.verification_token_hash == token_hash).first()
+    if not user or not user.verification_token_expires or user.verification_token_expires < utcnow():
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link")
+    user.email_verified = True
+    user.verification_token_hash = None
+    user.verification_token_expires = None
+    db.commit()
+    return {"detail": "Email verified"}
+
+
+@app.post("/auth/resend-verification")
+def resend_verification(db: Session = Depends(get_db),
+                        current_user: models.User = Depends(auth.get_current_user)):
+    if current_user.email_verified:
+        return {"detail": "Email already verified"}
+    verify_token = auth.generate_token()
+    current_user.verification_token_hash = auth.hash_token(verify_token)
+    current_user.verification_token_expires = utcnow() + timedelta(hours=24)
+    db.commit()
+    email_utils.send_verification_email(current_user.email, verify_token)
+    return {"detail": "Verification email sent"}
+
+
+@app.post("/auth/forgot-password")
+@auth.limiter.limit("3/hour")
+def forgot_password(request: Request, body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    # Always return the same response whether or not the email is registered —
+    # a different response would let an attacker enumerate accounts.
+    generic = {"detail": "If that email is registered, a reset link has been sent."}
+    user = db.query(models.User).filter(models.User.email == body.email).first()
+    if not user:
+        return generic
+    reset_token = auth.generate_token()
+    user.reset_token_hash = auth.hash_token(reset_token)
+    user.reset_token_expires = utcnow() + timedelta(minutes=30)
+    db.commit()
+    email_utils.send_password_reset_email(user.email, reset_token)
+    return generic
+
+
+@app.post("/auth/reset-password")
+def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    token_hash = auth.hash_token(body.token)
+    user = db.query(models.User).filter(models.User.reset_token_hash == token_hash).first()
+    if not user or not user.reset_token_expires or user.reset_token_expires < utcnow():
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    user.hashed_password = auth.hash_password(body.new_password)
+    user.reset_token_hash = None
+    user.reset_token_expires = None
+    # Invalidate every JWT issued before this reset (see auth.get_current_user).
+    user.token_version = (user.token_version or 0) + 1
+    db.commit()
+    return {"detail": "Password reset. Please log in again."}
 
 def _user_payload(u: models.User):
     return {
         "id": u.id,
         "email": u.email,
+        "email_verified": bool(u.email_verified),
         "display_name": u.display_name or "",
         "avatar": u.avatar or "",
         "primary_currency": u.primary_currency or "SGD",

@@ -31,6 +31,49 @@ export async function getMe(token) {
   return data;
 }
 
+export async function verifyEmail(token) {
+  const res = await fetch(`${API_URL}/auth/verify-email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Verification failed");
+  return data;
+}
+
+export async function resendVerification(authToken) {
+  const res = await fetch(`${API_URL}/auth/resend-verification`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Could not resend verification email");
+  return data;
+}
+
+export async function forgotPassword(email) {
+  const res = await fetch(`${API_URL}/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Request failed");
+  return data;
+}
+
+export async function resetPassword(token, newPassword) {
+  const res = await fetch(`${API_URL}/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Reset failed");
+  return data;
+}
+
 export async function askAI(token, question) {
   const res = await fetch(`${API_URL}/ai/ask`, {
     method: "POST",
