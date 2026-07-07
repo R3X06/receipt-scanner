@@ -33,7 +33,20 @@ Base.metadata.create_all(bind=engine)
 import migrate  # noqa: E402  -- must follow create_all so tables exist
 migrate.run()
 
-app = FastAPI()
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
+
+
+def _docs_urls_for(environment: str) -> dict:
+    """Swagger UI (/docs), ReDoc (/redoc), and the raw schema (/openapi.json)
+    are default recon targets for any scanner probing a discovered API — they
+    hand over every endpoint, field, and validation rule for free. Off in
+    production; on everywhere else, so local/dev work is unaffected."""
+    if environment == "production":
+        return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    return {}
+
+
+app = FastAPI(**_docs_urls_for(ENVIRONMENT))
 
 app.state.limiter = auth.limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -273,12 +286,26 @@ def update_me(
     return _user_payload(current_user)
 
 
+def _reject_non_image(file: UploadFile):
+    """Advisory only — Content-Type is client-supplied and trivially spoofed,
+    so this is not a security boundary (Vision will just fail gracefully on
+    non-image bytes regardless, via parsed_ok). It's here to reject obviously
+    wrong uploads before spending a paid Vision API call on them."""
+    if file.content_type and not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image.")
+
+
 @app.post("/ocr")
+@auth.limiter.limit("30/hour")
 async def scan_receipt(
+    request: Request,
     file: UploadFile = File(...),
     current_user: models.User = Depends(auth.get_current_user)
 ):
+    _reject_non_image(file)
     contents = await file.read()
+    if len(contents) > MAX_IMPORT_BYTES:      # parity with /scan below
+        raise HTTPException(status_code=413, detail="File too large.")
     base_currency = current_user.primary_currency or "SGD"
     raw_text = providers.get_ocr().extract_text(contents)
     parsed = ocr.parse_receipt(raw_text, base_currency=base_currency)
@@ -294,7 +321,9 @@ async def scan_receipt(
     }
 
 @app.post("/scan")
+@auth.limiter.limit("30/hour")
 async def scan_image(
+    request: Request,
     file: UploadFile = File(...),
     attested: bool = Form(False),
     db: Session = Depends(get_db),
@@ -303,6 +332,7 @@ async def scan_image(
     """One OCR pass, then route: a PayNow screenshot -> the import pipeline
     (staging + review); anything else -> a receipt draft (the instant-expense
     flow). Classifying the text we already OCR'd avoids a second OCR call."""
+    _reject_non_image(file)
     contents = await file.read()
     if len(contents) > MAX_IMPORT_BYTES:
         raise HTTPException(status_code=413, detail="File too large.")
