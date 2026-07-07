@@ -64,3 +64,5 @@ export default function VerifyEmail() {
     </div>
   );
 }
+
+//end of code
