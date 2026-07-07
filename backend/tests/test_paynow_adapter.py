@@ -142,11 +142,10 @@ def test_full_parse_is_not_flagged_low_confidence(db, user):
 
 # --- endpoint branch ---------------------------------------------------------
 
-def test_paynow_upload_endpoint(client, db):
+def test_paynow_upload_endpoint(client, db, signup_and_verify):
     import providers
     providers.set_ocr(FakeOCR(SAMPLE))             # OCR returns a PayNow screen
-    r = client.post("/auth/signup", json={"email": "pn@t.com", "password": "demo1234"})
-    tok = r.json()["access_token"]
+    tok = signup_and_verify("pn@t.com")
     up = client.post(
         "/imports",
         files={"file": ("shot.png", b"<image-bytes>", "image/png")},

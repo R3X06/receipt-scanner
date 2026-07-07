@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { verifyEmail } from "./api";
+import { useAuth } from "./AuthContext";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +12,7 @@ import {
 } from "@/components/ui/card";
 
 export default function VerifyEmail() {
+  const { saveToken } = useAuth();
   const [token] = useState(() => new URLSearchParams(window.location.search).get("token"));
   const [status, setStatus] = useState(token ? "verifying" : "error"); // 'verifying' | 'success' | 'error'
   const [message, setMessage] = useState(token ? "" : "This link is missing its verification token.");
@@ -18,12 +20,15 @@ export default function VerifyEmail() {
   useEffect(() => {
     if (!token) return; // already reflected in the initial state above
     verifyEmail(token)
-      .then(() => setStatus("success"))
+      .then((data) => {
+        saveToken(data.access_token);   // verifying creates the account and logs you in
+        setStatus("success");
+      })
       .catch((err) => {
         setStatus("error");
         setMessage(err.message || "This link is invalid or has expired.");
       });
-  }, [token]);
+  }, [token, saveToken]);
 
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4">
@@ -45,7 +50,7 @@ export default function VerifyEmail() {
           </CardTitle>
           <CardDescription className="text-glow2">
             {status === "verifying" && "One moment."}
-            {status === "success" && "Your KALLA account is confirmed."}
+            {status === "success" && "Your KALLA account is ready — you're signed in."}
             {status === "error" && message}
           </CardDescription>
         </CardHeader>
@@ -56,7 +61,7 @@ export default function VerifyEmail() {
               className="w-full font-medium text-glow2"
               onClick={() => (window.location.href = "/")}
             >
-              Continue to KALLA
+              {status === "success" ? "Go to dashboard" : "Continue to KALLA"}
             </Button>
           </CardContent>
         )}
@@ -64,5 +69,3 @@ export default function VerifyEmail() {
     </div>
   );
 }
-
-//end of code

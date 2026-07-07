@@ -22,8 +22,18 @@ class FakeOCR:
 
 
 def _token(client, email="scan@t.com"):
-    r = client.post("/auth/signup", json={"email": email, "password": "demo1234"})
-    return r.json()["access_token"]
+    import email_utils
+    orig = email_utils.send_verification_email
+    captured = {}
+    email_utils.send_verification_email = lambda to, token: captured.update(token=token) or True
+    try:
+        r = client.post("/auth/signup", json={"email": email, "password": "demo1234"})
+        assert r.status_code == 200, r.text
+        r2 = client.post("/auth/verify-email", json={"token": captured["token"]})
+        assert r2.status_code == 200, r2.text
+        return r2.json()["access_token"]
+    finally:
+        email_utils.send_verification_email = orig
 
 
 def _hdr(t):

@@ -34,9 +34,8 @@ class _RaisingFX:
         raise fx.FXUnavailableError("rate unavailable")
 
 
-def test_expense_endpoint_returns_503_when_fx_unavailable(client):
-    token = client.post("/auth/signup",
-                        json={"email": "fx@b.com", "password": "demo1234"}).json()["access_token"]
+def test_expense_endpoint_returns_503_when_fx_unavailable(client, signup_and_verify):
+    token = signup_and_verify("fx@b.com")
     providers.set_fx(_RaisingFX())           # rate service "down" for this write
     try:
         r = client.post("/ledger/expense", json={"amount": 20, "currency": "USD"},

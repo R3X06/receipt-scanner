@@ -167,3 +167,28 @@ def client(db, fake_fx, fake_ocr):
     with TestClient(main.app) as c:
         yield c
     main.app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def signup_and_verify(client, monkeypatch):
+    """Signup no longer creates an account or returns a token — only
+    /auth/verify-email does, once the emailed link is 'clicked'. This
+    monkeypatches email sending to capture the token instead of actually
+    emailing it, then completes verification, and returns a ready-to-use
+    access_token — what tests need instead of the token /auth/signup used to
+    hand back directly."""
+    import email_utils
+
+    def _do(email="t@t.com", password="demo1234"):
+        captured = {}
+        monkeypatch.setattr(
+            email_utils, "send_verification_email",
+            lambda to, token: captured.update(token=token) or True,
+        )
+        r = client.post("/auth/signup", json={"email": email, "password": password})
+        assert r.status_code == 200, r.text
+        r2 = client.post("/auth/verify-email", json={"token": captured["token"]})
+        assert r2.status_code == 200, r2.text
+        return r2.json()["access_token"]
+
+    return _do

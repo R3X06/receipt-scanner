@@ -31,13 +31,11 @@ class _RaisingFX:
         raise fx.FXUnavailableError("rate down")
 
 
-def test_write_endpoint_returns_503_when_fx_unavailable(client):
+def test_write_endpoint_returns_503_when_fx_unavailable(client, signup_and_verify):
     # client installs FakeFX; override with a raising provider for this test
     providers.set_fx(_RaisingFX())
     try:
-        token = client.post("/auth/signup",
-                            json={"email": "fx@b.com", "password": "demo1234"}
-                            ).json()["access_token"]
+        token = signup_and_verify("fx@b.com")
         r = client.post("/ledger/expense",
                         json={"amount": 100, "currency": "USD"},
                         headers={"Authorization": f"Bearer {token}"})

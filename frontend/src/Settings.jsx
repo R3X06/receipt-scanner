@@ -1,14 +1,13 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
 import { CURRENCIES } from "./constants";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { updateMe, getCategories, updateCategories, resendVerification } from "./api";
+import { updateMe, getCategories, updateCategories, deleteAccount } from "./api";
 
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 
@@ -42,50 +41,6 @@ function ToggleRow({ label, hint, checked, onChange }) {
           }`}
         />
       </button>
-    </div>
-  );
-}
-
-function EmailVerificationStatus({ token, verified }) {
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState("");
-
-  async function resend() {
-    setSending(true);
-    setError("");
-    try {
-      await resendVerification(token);
-      setSent(true);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSending(false);
-    }
-  }
-
-  if (verified) {
-    return (
-      <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-        <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
-        <p className="text-sm">Email verified</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
-          <p className="text-sm text-amber-200">Email not verified</p>
-        </div>
-        <Button size="sm" variant="outline" onClick={resend} disabled={sending || sent}
-          className="shrink-0 border-white/15 bg-transparent hover:bg-white/5">
-          {sent ? "Sent ✓" : sending ? "Sending…" : "Resend email"}
-        </Button>
-      </div>
-      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }
@@ -137,6 +92,73 @@ function CategoryTags({ token }) {
       <Button size="sm" onClick={save} disabled={saving} className="w-full">
         {saving ? "Saving…" : saved ? "Saved ✓" : "Save category types"}
       </Button>
+    </div>
+  );
+}
+
+function DeleteAccountSection({ token }) {
+  const { logout } = useAuth();
+  const [confirming, setConfirming] = useState(false);
+  const [password, setPassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleDelete() {
+    setDeleting(true);
+    setError("");
+    try {
+      await deleteAccount(token, password);
+      logout();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function cancel() {
+    setConfirming(false);
+    setPassword("");
+    setError("");
+  }
+
+  if (!confirming) {
+    return (
+      <div className="space-y-2 rounded-xl border border-destructive/30 bg-destructive/[0.04] p-3">
+        <p className="text-sm font-medium text-destructive">Delete account</p>
+        <p className="text-xs text-muted-foreground">
+          Permanently deletes your account and all your data. This can't be undone.
+        </p>
+        <Button size="sm" variant="destructive" onClick={() => setConfirming(true)} className="w-full">
+          Delete account
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-xl border border-destructive/30 bg-destructive/[0.04] p-3">
+      <p className="text-sm font-medium text-destructive">Confirm deletion</p>
+      <p className="text-xs text-muted-foreground">
+        Enter your password to permanently delete your account and all your data. This can't be undone.
+      </p>
+      <Input
+        type="password"
+        placeholder="Password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+      />
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" onClick={cancel} disabled={deleting}
+          className="flex-1 border-white/15 bg-transparent hover:bg-white/5">
+          Cancel
+        </Button>
+        <Button size="sm" variant="destructive" onClick={handleDelete} disabled={deleting || !password}
+          className="flex-1">
+          {deleting ? "Deleting..." : "Permanently delete"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -193,8 +215,6 @@ export default function Settings({ onClose }) {
           <h2 className="text-base font-medium">Settings</h2>
           <p className="text-sm text-muted-foreground">Your profile and how KALLA works for you.</p>
         </div>
-
-        <EmailVerificationStatus token={token} verified={user?.email_verified} />
 
         <div className="space-y-2">
           <Label>Display name</Label>
@@ -259,6 +279,8 @@ export default function Settings({ onClose }) {
         </div>
 
         <CategoryTags token={token} />
+
+        <DeleteAccountSection token={token} />
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 

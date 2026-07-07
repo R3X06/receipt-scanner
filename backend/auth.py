@@ -51,6 +51,7 @@ else:
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
+SIGNUP_TOKEN_EXPIRE_MINUTES = 60 * 24      # 24h — matches the old verification-link expiry
 
 # ---------------------------------------------------------------------------
 # Password hashing — Argon2id primary; bcrypt retained only to verify legacy
@@ -96,11 +97,28 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def create_token(data: dict):
+def create_token(data: dict, expire_minutes: int | None = None):
     to_encode = data.copy()
-    expire = utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    minutes = expire_minutes if expire_minutes is not None else ACCESS_TOKEN_EXPIRE_MINUTES
+    expire = utcnow() + timedelta(minutes=minutes)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+class InvalidSignupToken(Exception):
+    """Raised for a signup-verification token that's malformed, expired, or
+    not actually a signup token (e.g. someone passing a session or
+    password-reset token to /auth/verify-email)."""
+
+
+def decode_signup_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        raise InvalidSignupToken("invalid or expired")
+    if payload.get("purpose") != "signup" or not payload.get("email") or not payload.get("pwd_hash"):
+        raise InvalidSignupToken("wrong token type")
+    return payload
 
 
 def get_current_user(

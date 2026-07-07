@@ -25,6 +25,7 @@ import {
 export default function Login() {
   const { saveToken } = useAuth();
   const [isSignup, setIsSignup] = useState(false);
+  const [signupPending, setSignupPending] = useState(false);
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
   const [email, setEmail] = useState("");
@@ -38,10 +39,25 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      const data = isSignup
-        ? await signup(email, password, currency)
-        : await login(email, password);
-      saveToken(data.access_token);
+      if (isSignup) {
+        await signup(email, password, currency);
+        setSignupPending(true);   // no account yet — verify-email is what logs you in
+      } else {
+        const data = await login(email, password);
+        saveToken(data.access_token);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResendSignup() {
+    setError("");
+    setLoading(true);
+    try {
+      await signup(email, password, currency);   // no account exists yet — resubmitting just re-sends
     } catch (err) {
       setError(err.message);
     } finally {
@@ -68,7 +84,56 @@ export default function Login() {
   function backToSignIn() {
     setForgotMode(false);
     setForgotSent(false);
+    setSignupPending(false);
+    setIsSignup(false);
     setError("");
+  }
+
+  if (signupPending) {
+    return (
+      <div className="relative min-h-screen flex items-center justify-center p-4">
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(600px circle at 50% 50%, rgba(49, 15, 81, 0.12), transparent 0%)",
+          }}
+        />
+
+        <Card className="relative z-10 w-full max-w-sm rounded-2xl border-white/4 bg-white/[0.0] backdrop-blur-xl shadow-2xl shadow-black/30">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl font-sans tracking-tight text-glow2">
+              Check your email
+            </CardTitle>
+            <CardDescription className="text-glow2">
+              Click the link we sent to {email} to confirm your account. It expires in 24 hours.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button
+              variant="outline"
+              onClick={handleResendSignup}
+              disabled={loading}
+              className="w-full border-white/15 bg-transparent hover:bg-white/5"
+            >
+              {loading ? "Sending..." : "Resend email"}
+            </Button>
+          </CardContent>
+
+          <CardFooter className="justify-center">
+            <button
+              type="button"
+              onClick={backToSignIn}
+              className="text-sm text-primary font-medium hover:underline"
+            >
+              Back to sign in
+            </button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
   }
 
   if (forgotMode) {

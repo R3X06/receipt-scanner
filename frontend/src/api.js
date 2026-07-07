@@ -42,16 +42,6 @@ export async function verifyEmail(token) {
   return data;
 }
 
-export async function resendVerification(authToken) {
-  const res = await fetch(`${API_URL}/auth/resend-verification`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${authToken}` },
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || "Could not resend verification email");
-  return data;
-}
-
 export async function forgotPassword(email) {
   const res = await fetch(`${API_URL}/auth/forgot-password`, {
     method: "POST",
@@ -71,6 +61,20 @@ export async function resetPassword(token, newPassword) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || "Reset failed");
+  return data;
+}
+
+export async function deleteAccount(token, password) {
+  const res = await fetch(`${API_URL}/auth/me`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ password }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Could not delete account");
   return data;
 }
 

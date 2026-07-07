@@ -110,6 +110,7 @@ def get_or_create_user(db):
         hashed_password=auth.hash_password(DEMO_PASSWORD),
         primary_currency=DEMO_CURRENCY,
         savings_strategy="proportional",
+        email_verified=True,   # seeded directly, never goes through the email flow
     )
     db.add(user)
     db.commit()

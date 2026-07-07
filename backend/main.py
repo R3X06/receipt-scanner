@@ -96,6 +96,10 @@ class VerifyEmailRequest(BaseModel):
     token: str
 
 
+class DeleteAccountRequest(BaseModel):
+    password: str
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
@@ -135,16 +139,13 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/auth/signup")
-@auth.limiter.limit("10/hour")
-def signup(request: Request, body: SignupRequest, db: Session = Depends(get_db)):
-    existing = db.query(models.User).filter(models.User.email == body.email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    user = models.User(
-        email=body.email,
-        hashed_password=auth.hash_password(body.password)
-    )
+def _create_user_with_defaults(db: Session, *, email: str, hashed_password: str) -> models.User:
+    """Creates the user plus the default spending/savings accounts, starter
+    categories, and emergency-fund goal every account needs. The only call
+    site is /auth/verify-email — signup itself no longer writes to the DB
+    (see that endpoint's docstring below), so account creation happens here,
+    at the moment the email link is actually clicked."""
+    user = models.User(email=email, hashed_password=hashed_password, email_verified=True)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -159,15 +160,29 @@ def signup(request: Request, body: SignupRequest, db: Session = Depends(get_db))
     # signup and the lazy-ensure path; users can opt out via /goals/emergency)
     db.add(models.Goal(user_id=user.id, name="Emergency fund", is_emergency=True,
                        in_distribution=True, coverage_months=6, priority=0))
-    # Email verification: generate + store only the hash, email the raw token.
-    # Best-effort — a broken email provider must not block account creation.
-    verify_token = auth.generate_token()
-    user.verification_token_hash = auth.hash_token(verify_token)
-    user.verification_token_expires = utcnow() + timedelta(hours=24)
     db.commit()
-    email_utils.send_verification_email(user.email, verify_token)
-    token = auth.create_token({"sub": user.id, "ver": user.token_version or 0})
-    return {"access_token": token, "token_type": "bearer"}
+    return user
+
+
+@app.post("/auth/signup")
+@auth.limiter.limit("10/hour")
+def signup(request: Request, body: SignupRequest, db: Session = Depends(get_db)):
+    """Starts a pending signup — no account exists until the emailed link is
+    clicked. The email + password hash travel inside a signed, 24h-expiry
+    token (purpose='signup', checked on decode so it can't be replayed as a
+    session or password-reset token); nothing is written to the database
+    here, so an abandoned signup leaves no row to clean up, and re-submitting
+    with the same email (e.g. the first email never arrived) just mints a
+    fresh token — no separate 'resend' endpoint is needed."""
+    existing = db.query(models.User).filter(models.User.email == body.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    token = auth.create_token(
+        {"purpose": "signup", "email": body.email, "pwd_hash": auth.hash_password(body.password)},
+        expire_minutes=auth.SIGNUP_TOKEN_EXPIRE_MINUTES,
+    )
+    email_utils.send_verification_email(body.email, token)
+    return {"detail": "Check your email to confirm your account."}
 
 
 @app.post("/auth/login")
@@ -187,28 +202,23 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
 
 @app.post("/auth/verify-email")
 def verify_email(body: VerifyEmailRequest, db: Session = Depends(get_db)):
-    token_hash = auth.hash_token(body.token)
-    user = db.query(models.User).filter(models.User.verification_token_hash == token_hash).first()
-    if not user or not user.verification_token_expires or user.verification_token_expires < utcnow():
+    """Decodes the pending-signup token and creates the account — this is the
+    only place a User row gets created from the signup flow. Idempotent: if
+    the account already exists (e.g. an older resent link clicked after a
+    newer one already completed signup), this just logs into the existing
+    account rather than erroring."""
+    try:
+        payload = auth.decode_signup_token(body.token)
+    except auth.InvalidSignupToken:
         raise HTTPException(status_code=400, detail="Invalid or expired verification link")
-    user.email_verified = True
-    user.verification_token_hash = None
-    user.verification_token_expires = None
-    db.commit()
-    return {"detail": "Email verified"}
 
+    email = payload["email"]
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if user is None:
+        user = _create_user_with_defaults(db, email=email, hashed_password=payload["pwd_hash"])
 
-@app.post("/auth/resend-verification")
-def resend_verification(db: Session = Depends(get_db),
-                        current_user: models.User = Depends(auth.get_current_user)):
-    if current_user.email_verified:
-        return {"detail": "Email already verified"}
-    verify_token = auth.generate_token()
-    current_user.verification_token_hash = auth.hash_token(verify_token)
-    current_user.verification_token_expires = utcnow() + timedelta(hours=24)
-    db.commit()
-    email_utils.send_verification_email(current_user.email, verify_token)
-    return {"detail": "Verification email sent"}
+    token = auth.create_token({"sub": user.id, "ver": user.token_version or 0})
+    return {"access_token": token, "token_type": "bearer"}
 
 
 @app.post("/auth/forgot-password")
@@ -263,6 +273,39 @@ def _user_payload(u: models.User):
 @app.get("/auth/me")
 def me(current_user: models.User = Depends(auth.get_current_user)):
     return _user_payload(current_user)
+
+
+@app.delete("/auth/me")
+@auth.limiter.limit("5/minute")
+def delete_account(request: Request, body: DeleteAccountRequest, db: Session = Depends(get_db),
+                   current_user: models.User = Depends(auth.get_current_user)):
+    """Permanently deletes the caller's account and every row belonging to it.
+    Password re-entry is required — a bare stolen token alone isn't enough to
+    destroy an account. Deletion order is child-before-parent through the FK
+    graph, the same order (and for the same reason) as delete_non_demo_users.py
+    uses for the bulk-cleanup case — see that script's docstring for the FK
+    reasoning. No token_version bump is needed afterward: the user row itself
+    is gone, so any existing JWT fails at the lookup in get_current_user."""
+    if not auth.verify_password(body.password, current_user.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+
+    uid = current_user.id
+    db.query(models.ImportCandidate).filter(
+        models.ImportCandidate.user_id == uid).delete(synchronize_session=False)
+    db.query(models.ImportBatch).filter(
+        models.ImportBatch.user_id == uid).delete(synchronize_session=False)
+    db.query(models.LedgerEntry).filter(
+        models.LedgerEntry.user_id == uid).delete(synchronize_session=False)
+    db.query(models.Account).filter(
+        models.Account.user_id == uid).delete(synchronize_session=False)
+    db.query(models.Category).filter(
+        models.Category.user_id == uid).delete(synchronize_session=False)
+    db.query(models.Goal).filter(
+        models.Goal.user_id == uid).delete(synchronize_session=False)
+    db.query(models.User).filter(models.User.id == uid).delete(synchronize_session=False)
+    db.commit()
+    logger.info("account_deleted", extra={"user_id": uid})
+    return {"detail": "Account deleted."}
 
 
 @app.put("/users/me")
