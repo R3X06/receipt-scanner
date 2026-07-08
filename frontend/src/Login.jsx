@@ -3,6 +3,7 @@ import { login, signup, forgotPassword } from "./api";
 import { useAuth } from "./AuthContext";
 import { CURRENCIES } from "./constants";
 
+import KallaLogo from "./components/ui/KallaLogo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,7 +23,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export default function Login() {
+const LogoAbove = ({ onBack }) => (
+  <div onClick={onBack} style={{
+    position: "absolute", bottom: "100%", left: "50%",
+    transform: "translateX(-50%)", paddingBottom: 20, whiteSpace: "nowrap",
+    filter: "drop-shadow(0 0 12px #A855F7aa) drop-shadow(0 0 28px #A855F760)",
+    cursor: "pointer",
+  }}>
+    <KallaLogo width={300} />
+  </div>
+);
+
+const GlowBg = () => (
+  <div className="pointer-events-none absolute inset-0"
+    style={{ background: "radial-gradient(600px circle at 50% 50%, rgba(49, 15, 81, 0.12), transparent 0%)" }}
+  />
+);
+
+export default function Login({ onBack }) {
   const { saveToken } = useAuth();
   const [isSignup, setIsSignup] = useState(false);
   const [signupPending, setSignupPending] = useState(false);
@@ -41,7 +59,7 @@ export default function Login() {
     try {
       if (isSignup) {
         await signup(email, password, currency);
-        setSignupPending(true);   // no account yet — verify-email is what logs you in
+        setSignupPending(true);
       } else {
         const data = await login(email, password);
         saveToken(data.access_token);
@@ -57,7 +75,7 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await signup(email, password, currency);   // no account exists yet — resubmitting just re-sends
+      await signup(email, password, currency);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -73,8 +91,6 @@ export default function Login() {
       await forgotPassword(email);
       setForgotSent(true);
     } catch (err) {
-      // Backend already returns a generic message either way — this only
-      // fires on a genuine network/server failure, not "email not found".
       setError(err.message);
     } finally {
       setLoading(false);
@@ -92,46 +108,33 @@ export default function Login() {
   if (signupPending) {
     return (
       <div className="relative min-h-screen flex items-center justify-center p-4">
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(600px circle at 50% 50%, rgba(49, 15, 81, 0.12), transparent 0%)",
-          }}
-        />
-
-        <Card className="relative z-10 w-full max-w-sm rounded-2xl border-white/4 bg-white/[0.0] backdrop-blur-xl shadow-2xl shadow-black/30">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-sans tracking-tight text-glow2">
-              Check your email
-            </CardTitle>
-            <CardDescription className="text-glow2">
-              Click the link we sent to {email} to confirm your account. It expires in 24 hours.
-            </CardDescription>
-          </CardHeader>
-
-          <CardContent>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button
-              variant="outline"
-              onClick={handleResendSignup}
-              disabled={loading}
-              className="w-full border-white/15 bg-transparent hover:bg-white/5"
-            >
-              {loading ? "Sending..." : "Resend email"}
-            </Button>
-          </CardContent>
-
-          <CardFooter className="justify-center">
-            <button
-              type="button"
-              onClick={backToSignIn}
-              className="text-sm text-primary font-medium hover:underline"
-            >
-              Back to sign in
-            </button>
-          </CardFooter>
-        </Card>
+        <GlowBg />
+        <div className="relative z-10 w-full max-w-sm">
+          <LogoAbove onBack={onBack} />
+          <Card className="w-full rounded-2xl border-white/4 bg-white/[0.0] backdrop-blur-xl shadow-2xl shadow-black/30">
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-2xl font-sans tracking-tight text-glow2">
+                Check your email
+              </CardTitle>
+              <CardDescription className="text-glow2">
+                Click the link we sent to {email} to confirm your account. It expires in 24 hours.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <Button variant="outline" onClick={handleResendSignup} disabled={loading}
+                className="w-full border-white/15 bg-transparent hover:bg-white/5">
+                {loading ? "Sending..." : "Resend email"}
+              </Button>
+            </CardContent>
+            <CardFooter className="justify-center">
+              <button type="button" onClick={backToSignIn}
+                className="text-sm text-primary font-medium hover:underline">
+                Back to sign in
+              </button>
+            </CardFooter>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -139,164 +142,124 @@ export default function Login() {
   if (forgotMode) {
     return (
       <div className="relative min-h-screen flex items-center justify-center p-4">
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(600px circle at 50% 50%, rgba(49, 15, 81, 0.12), transparent 0%)",
-          }}
-        />
-
-        <Card className="relative z-10 w-full max-w-sm rounded-2xl border-white/4 bg-white/[0.0] backdrop-blur-xl shadow-2xl shadow-black/30">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-sans tracking-tight text-glow2">
-              Reset password
-            </CardTitle>
-            <CardDescription className="text-glow2">
-              {forgotSent
-                ? "If that email is registered, a reset link has been sent."
-                : "Enter your email and we'll send you a reset link."}
-            </CardDescription>
-          </CardHeader>
-
-          <CardContent>
-            {!forgotSent && (
-              <form onSubmit={handleForgotSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="forgot-email" className="text-glow font-sans">Email</Label>
-                  <Input
-                    id="forgot-email"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
-
-                {error && <p className="text-sm text-destructive">{error}</p>}
-
-                <Button type="submit" disabled={loading} className="w-full font-medium text-glow2">
-                  {loading ? "Please wait..." : "Send reset link"}
-                </Button>
-              </form>
-            )}
-          </CardContent>
-
-          <CardFooter className="justify-center">
-            <button
-              type="button"
-              onClick={backToSignIn}
-              className="text-sm text-primary font-medium hover:underline"
-            >
-              Back to sign in
-            </button>
-          </CardFooter>
-        </Card>
+        <GlowBg />
+        <div className="relative z-10 w-full max-w-sm">
+          <LogoAbove onBack={onBack} />
+          <Card className="w-full rounded-2xl border-white/4 bg-white/[0.0] backdrop-blur-xl shadow-2xl shadow-black/30">
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-2xl font-sans tracking-tight text-glow2">
+                Reset password
+              </CardTitle>
+              <CardDescription className="text-glow2">
+                {forgotSent
+                  ? "If that email is registered, a reset link has been sent."
+                  : "Enter your email and we'll send you a reset link."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!forgotSent && (
+                <form onSubmit={handleForgotSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="forgot-email" className="text-glow font-sans">Email</Label>
+                    <Input id="forgot-email" type="email" placeholder="you@example.com"
+                      value={email} onChange={(e) => setEmail(e.target.value)} required />
+                  </div>
+                  {error && <p className="text-sm text-destructive">{error}</p>}
+                  <Button type="submit" disabled={loading} className="w-full font-medium text-glow2">
+                    {loading ? "Please wait..." : "Send reset link"}
+                  </Button>
+                </form>
+              )}
+            </CardContent>
+            <CardFooter className="justify-center">
+              <button type="button" onClick={backToSignIn}
+                className="text-sm text-primary font-medium hover:underline">
+                Back to sign in
+              </button>
+            </CardFooter>
+          </Card>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4">
-      {/* soft purple glow behind the card */}
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(600px circle at 50% 50%, rgba(49, 15, 81, 0.12), transparent 0%)",
-        }}
-      />
+      <GlowBg />
 
-      <Card className="relative z-10 w-full max-w-sm rounded-2xl border-white/4 bg-white/[0.0] backdrop-blur-xl shadow-2xl shadow-black/30">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-sans tracking-tight text-glow2">
-            {isSignup ? "Create account" : "Welcome back"}
-          </CardTitle>
-          <CardDescription className = "text-glow2">
-            {isSignup ? "Start tracking your expenses" : "Sign in to your account"}
-          </CardDescription>
-        </CardHeader>
+      <div className="relative z-10 w-full max-w-sm">
+        <LogoAbove onBack={onBack} />
 
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-glow font-sans">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
+        <Card className="w-full rounded-2xl border-white/4 bg-white/[0.0] backdrop-blur-xl shadow-2xl shadow-black/30">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl font-sans tracking-tight text-glow2">
+              {isSignup ? "Create account" : "Welcome back"}
+            </CardTitle>
+            <CardDescription className="text-glow2">
+              {isSignup ? "Start tracking your expenses" : "Sign in to your account"}
+            </CardDescription>
+          </CardHeader>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-glow font-sans">Password</Label>
-                {!isSignup && (
-                  <button
-                    type="button"
-                    onClick={() => setForgotMode(true)}
-                    className="text-xs text-primary font-medium hover:underline"
-                  >
-                    Forgot password?
-                  </button>
-                )}
-              </div>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-
-            {isSignup && (
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label className = "text-glow2">Primary currency</Label>
-                <Select value={currency} onValueChange={setCurrency}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select currency" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CURRENCIES.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground text-glow2">
-                  Your charts will show totals converted into this currency.
-                </p>
+                <Label htmlFor="email" className="text-glow font-sans">Email</Label>
+                <Input id="email" type="email" placeholder="you@example.com"
+                  value={email} onChange={(e) => setEmail(e.target.value)} required />
               </div>
-            )}
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password" className="text-glow font-sans">Password</Label>
+                  {!isSignup && (
+                    <button type="button" onClick={() => setForgotMode(true)}
+                      className="text-xs text-primary font-medium hover:underline">
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
+                <Input id="password" type="password" placeholder="••••••••"
+                  value={password} onChange={(e) => setPassword(e.target.value)} required />
+              </div>
 
-            <Button type="submit" disabled={loading} className="w-full font-medium text-glow2">
-              {loading ? "Please wait..." : isSignup ? "Create account" : "Sign in"}
-            </Button>
-          </form>
-        </CardContent>
+              {isSignup && (
+                <div className="space-y-2">
+                  <Label className="text-glow2">Primary currency</Label>
+                  <Select value={currency} onValueChange={setCurrency}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select currency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CURRENCIES.map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground text-glow2">
+                    Your charts will show totals converted into this currency.
+                  </p>
+                </div>
+              )}
 
-        <CardFooter className="justify-center">
-          <p className="text-sm text-muted-foreground">
-            {isSignup ? "Already have an account? " : "Don't have an account? "}
-            <button
-              type="button"
-              onClick={() => setIsSignup(!isSignup)}
-              className="text-primary font-medium hover:underline"
-            >
-              {isSignup ? "Sign in" : "Sign up"}
-            </button>
-          </p>
-        </CardFooter>
-      </Card>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+
+              <Button type="submit" disabled={loading} className="w-full font-medium text-glow2">
+                {loading ? "Please wait..." : isSignup ? "Create account" : "Sign in"}
+              </Button>
+            </form>
+          </CardContent>
+
+          <CardFooter className="justify-center">
+            <p className="text-sm text-muted-foreground">
+              {isSignup ? "Already have an account? " : "Don't have an account? "}
+              <button type="button" onClick={() => setIsSignup(!isSignup)}
+                className="text-primary font-medium hover:underline">
+                {isSignup ? "Sign in" : "Sign up"}
+              </button>
+            </p>
+          </CardFooter>
+        </Card>
+      </div>
     </div>
   );
 }

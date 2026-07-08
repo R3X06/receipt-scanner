@@ -22,7 +22,6 @@ import os
 # ---------------------------------------------------------------------------
 TESTING = "pytest" in sys.modules
 limiter = Limiter(key_func=get_remote_address, enabled=not TESTING)
-
 # ---------------------------------------------------------------------------
 # JWT signing secret — environment-aware hard-fail (Gate 1, Decision 1.3)
 #   * production: refuse to start if the secret is missing or left at default

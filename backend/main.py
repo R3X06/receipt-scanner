@@ -61,7 +61,11 @@ async def _fx_unavailable_handler(request, exc):
         content={"detail": "Exchange rate temporarily unavailable — please try again shortly."},
     )
 
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+allowed_origins = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174"
+).split(",")
+
 
 app.add_middleware(
     CORSMiddleware,

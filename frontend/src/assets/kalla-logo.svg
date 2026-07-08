@@ -1,0 +1,16 @@
+<svg viewBox="0 0 700 135" xmlns="http://www.w3.org/2000/svg">
+  <line x1="30" y1="120" x2="30" y2="18" stroke="#dfbdff" stroke-width="2.5" stroke-linecap="square"/>
+  <line x1="30" y1="18" x2="10" y2="18" stroke="#dfbdff" stroke-width="3" stroke-linecap="butt"/>
+  <line x1="30" y1="120" x2="98" y2="120" stroke="#dfbdff" stroke-width="3" stroke-linecap="butt"/>
+  <line x1="200" y1="69" x2="200" y2="120" stroke="#dfbdff" stroke-width="4" stroke-linecap="butt"/>
+  <line x1="90" y1="69" x2="200" y2="69" stroke="#dfbdff" stroke-width="2" stroke-linecap="square"/>
+  <line x1="90" y1="69" x2="130" y2="18" stroke="#dfbdff" stroke-width="3" stroke-linecap="butt"/>
+  <line x1="220" y1="120" x2="375" y2="18" stroke="#dfbdff" stroke-width="2" stroke-linecap="butt"/>
+  <line x1="375" y1="18" x2="375" y2="120" stroke="#dfbdff" stroke-width="4" stroke-linecap="butt"/>
+  <line x1="398" y1="18" x2="398" y2="120" stroke="#dfbdff" stroke-width="4" stroke-linecap="butt"/>
+  <line x1="398" y1="120" x2="440" y2="120" stroke="#dfbdff" stroke-width="2" stroke-linecap="square"/>
+  <line x1="468" y1="18" x2="468" y2="120" stroke="#dfbdff" stroke-width="4" stroke-linecap="butt"/>
+  <line x1="468" y1="120" x2="510" y2="120" stroke="#dfbdff" stroke-width="2" stroke-linecap="square"/>
+  <line x1="528" y1="120" x2="670" y2="18" stroke="#dfbdff" stroke-width="2" stroke-linecap="butt"/>
+  <line x1="670" y1="18" x2="670" y2="120" stroke="#dfbdff" stroke-width="4" stroke-linecap="butt"/>
+</svg>

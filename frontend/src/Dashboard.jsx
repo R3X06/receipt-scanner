@@ -17,6 +17,8 @@ import WalletCard from "./WalletCard";
 import SavingsCard from "./SavingsCard";
 import ReconciliationCard from "./ReconciliationCard";
 
+import KallaLogo from "./components/ui/KallaLogo";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -117,19 +119,16 @@ export default function Dashboard() {
     <div className="relative min-h-screen p-4 sm:p-6">
       <div className="relative z-10 mx-auto max-w-3xl space-y-4">
         {/* wordmark */}
-        <div className="pointer-events-none select-none text-left text-glow3 leading-none" aria-hidden="true">
+        <div className="pointer-events-none select-none text-left text-glow3 leading-none" aria-hidden="true" >
           <span
-            className="block font-medium capitalize"
-            style={{ fontSize: "clamp(14px, 2vw, 16px)", color: "hsla(66, 100%, 98%, 0.18)", letterSpacing: "0.04em" }}
+            className="block font-sans capitalize"
+            style={{ fontSize: "clamp(14px, 2vw, 16px)", color: "hsla(66, 100%, 98%, 0.18)", letterSpacing: "0.05em", marginLeft:"3px" }}
           >
-            {displayName}'s
+            {displayName.toUpperCase()}'s 
           </span>
-          <span
-            className="block font-sans"
-            style={{ fontSize: "clamp(26px, 3vw, 150px)", color: "hsla(66, 100%, 98%, 0.18)", letterSpacing: "0.08em" }}
-          >
-            KALLA
-          </span>
+          <div style={{ filter: "drop-shadow(0 0 12px #A855F7aa) drop-shadow(0 0 32px #A855F760)", marginTop: "6px" }}>
+            <KallaLogo width={230} />
+          </div>
         </div>
 
         {/* profile + sign out */}
