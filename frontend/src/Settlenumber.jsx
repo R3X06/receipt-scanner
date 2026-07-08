@@ -5,6 +5,7 @@ function easeOutExpo(t) {
 }
 
 /**
+ * 
  * Counts up from 0 to `value` whenever a defined value arrives.
  * - No `active` prop: animates once per mount, as soon as `value` is
  *   non-null (fits WalletCard, which fully remounts each time its dialog
