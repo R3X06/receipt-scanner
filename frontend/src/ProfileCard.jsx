@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Settings, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "./AuthContext";
 import { getCategories } from "./api";
+import SettleNumber from "./SettleNumber";
 
 const baseAmount = (e) => (e.amount_base != null ? e.amount_base : e.amount);
 
@@ -135,7 +136,7 @@ export default function ProfileCard({ user, expenses, onOpenSettings }) {
             <div>
               <p className="text-xs text-muted-foreground">This month</p>
               <p className="text-2xl font-semibold tabular-nums tracking-tight">
-                {baseCurrency} {monthlySpent.toFixed(2)}
+                {baseCurrency} <SettleNumber value={monthlySpent} active={open} />
               </p>
               <button
                 onClick={() => setShowTotal((s) => !s)}

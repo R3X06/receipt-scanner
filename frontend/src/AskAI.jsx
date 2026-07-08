@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { askAI } from "./api";
 
@@ -14,12 +14,22 @@ const EXAMPLES = [
   "How much on Food & Drink?",
 ];
 
+// Splits on existing newlines if the answer has them; otherwise falls back
+// to sentence breaks so a single-paragraph answer still prints in beats
+// rather than flashing in as one block.
+function answerLines(text) {
+  const byNewline = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  if (byNewline.length > 1) return byNewline;
+  return text.split(/(?<=[.!?])\s+/).map((l) => l.trim()).filter(Boolean);
+}
+
 export default function AskAI() {
   const { token } = useAuth();
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const holderRef = useRef(null);
 
   async function ask(q) {
     const query = (q ?? question).trim();
@@ -42,9 +52,36 @@ export default function AskAI() {
     if (e.key === "Enter") ask();
   }
 
+  useEffect(() => {
+    if (!answer || !holderRef.current) return;
+    const holder = holderRef.current;
+    holder.innerHTML = "";
+    const lines = answerLines(answer);
+    const PER = 90;
+    lines.forEach((line, i) => {
+      const el = document.createElement("p");
+      el.className = "kalla-ai-line";
+      el.textContent = line;
+      holder.appendChild(el);
+      setTimeout(() => { el.style.opacity = "1"; }, i * PER);
+    });
+  }, [answer]);
+
   return (
     <Card className={`${GLASS} rounded-2xl`}>
       <CardContent className="space-y-3">
+        <style>{`
+          .kalla-ai-line {
+            font-family: ui-monospace, monospace;
+            font-size: 12.5px;
+            line-height: 1.7;
+            color: #E8EDF2;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            margin: 0 0 4px;
+          }
+        `}</style>
+
         <div>
           <h2 className="text-base font-medium">Ask about your spending</h2>
           <p className="text-sm text-muted-foreground">
@@ -81,8 +118,8 @@ export default function AskAI() {
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         {answer && (
-          <div className="whitespace-pre-wrap rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm leading-relaxed">
-            {answer}
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <div ref={holderRef} />
           </div>
         )}
       </CardContent>

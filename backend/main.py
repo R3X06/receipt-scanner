@@ -499,6 +499,11 @@ def ledger_cashflow(month: Optional[str] = None, db: Session = Depends(get_db),
                     current_user: models.User = Depends(auth.get_current_user)):
     return ledger.cashflow(db, current_user, month)
 
+@app.get("/ledger/statement")
+def ledger_statement(month: Optional[str] = None, db: Session = Depends(get_db),
+                     current_user: models.User = Depends(auth.get_current_user)):
+    return ledger.statement_summary(db, current_user, month)
+
 class LedgerExpenseRequest(BaseModel):
     amount: float
     merchant: Optional[str] = ""

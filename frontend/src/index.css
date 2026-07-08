@@ -54,6 +54,28 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* --- insert into frontend/src/index.css, anywhere after the @theme block --- */
+
+@keyframes kalla-card-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.kalla-stagger {
+  opacity: 0;
+  animation: kalla-card-in 0.5s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+}
+
+/* --- insert into frontend/src/index.css, alongside the kalla-card-in block --- */
+
+@keyframes kalla-alert-pulse {
+  0%   { opacity: 0; transform: scale(0.96); border-color: rgba(245, 158, 11, 0.3); }
+  45%  { opacity: 1; transform: scale(1.015); border-color: rgba(245, 158, 11, 0.9); }
+  100% { opacity: 1; transform: scale(1); border-color: rgba(245, 158, 11, 0.3); }
+}
+.kalla-alert-in {
+  animation: kalla-alert-pulse 0.7s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+}
+
 :root {
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);

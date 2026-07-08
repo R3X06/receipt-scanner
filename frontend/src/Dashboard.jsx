@@ -42,6 +42,8 @@ import {
   Wallet,
   PiggyBank,
 } from "lucide-react";
+import AllocationReceipt from "./AllocationReceipt";
+import Statement from "./Statement";
 
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 const DIALOG = "max-w-lg border-0 bg-transparent p-0 shadow-none";
@@ -55,6 +57,7 @@ export default function Dashboard() {
   const [filters, setFilters] = useState({ start: "", end: "", category: "" });
 
   const [openDialog, setOpenDialog] = useState(null); // 'scan'|'add'|'ask'|'insights'|'filter'|'settings'
+  const [distData, setDistData] = useState(null);
   const [expensesOpen, setExpensesOpen] = useState(true);
   const [ledgerReload, setLedgerReload] = useState(0);
 
@@ -72,7 +75,6 @@ export default function Dashboard() {
   const displayName = (user?.display_name && user.display_name.trim()) || (user?.email ? user.email.split("@")[0] : "your");
   const hasFilter = !!(filters.start || filters.end || filters.category);
 
-  // keep the list open whenever a filter is active, so results are visible
   useEffect(() => {
     if (hasFilter) setExpensesOpen(true);
   }, [hasFilter]);
@@ -118,7 +120,6 @@ export default function Dashboard() {
   return (
     <div className="relative min-h-screen p-4 sm:p-6">
       <div className="relative z-10 mx-auto max-w-3xl space-y-4">
-        {/* wordmark */}
         <div className="pointer-events-none select-none text-left text-glow3 leading-none" aria-hidden="true" >
           <span
             className="block font-sans capitalize"
@@ -131,7 +132,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* profile + sign out */}
         <div className="flex items-start justify-between gap-3">
           <ProfileCard user={user} expenses={expenses} onOpenSettings={() => setOpenDialog("settings")} />
           <Button
@@ -145,26 +145,36 @@ export default function Dashboard() {
           </Button>
         </div>
 
-        {/* action buttons */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
-          {actions.map(({ key, label, icon: Icon }) => (
+          {actions.map(({ key, label, icon: Icon }, i) => (
             <Button
               key={key}
               variant="outline"
               onClick={() => setOpenDialog(key)}
-              className="h-auto flex-col gap-1.5 border-white/10 bg-white/[0.04] py-4 backdrop-blur-xl hover:bg-white/[0.08]"
+              onAnimationEnd={(e) => {
+                e.currentTarget.style.animation = "none";
+                e.currentTarget.style.opacity = "1";
+              }}
+              className="kalla-stagger h-auto flex-col gap-1.5 border-white/10 bg-white/[0.04] py-4 backdrop-blur-xl transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/60"
+              style={{ animationDelay: `${i * 0.04}s` }}
             >
               <Icon className="h-5 w-5 text-primary" />
               <span className="text-sm font-medium">{label}</span>
             </Button>
           ))}
+
         </div>
 
         <ReconciliationCard reloadKey={ledgerReload} onAddIncome={() => setOpenDialog("wallet")} onChange={bump} />
 
         {noExpenses ? (
-          /* first-run expenses hint */
-          <Card className={`${GLASS} rounded-2xl`}>
+          <Card
+            className={`kalla-stagger ${GLASS} rounded-2xl`}
+            onAnimationEnd={(e) => {
+              e.currentTarget.style.animation = "none";
+              e.currentTarget.style.opacity = "1";
+            }}
+          >
             <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
                 <Wallet className="h-6 w-6 text-primary" />
@@ -189,7 +199,6 @@ export default function Dashboard() {
           </Card>
         ) : (
           <>
-            {/* multi-currency total */}
             {currencyTotals.length > 0 && (
               <Card className={`${GLASS} rounded-2xl`}>
                 <CardContent className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
@@ -201,16 +210,22 @@ export default function Dashboard() {
                       <span className={i === 0 ? "text-xs text-primary" : "text-xs text-muted-foreground"}>{cur}</span>
                     </div>
                   ))}
+                  <button
+                    type="button"
+                    onClick={() => setOpenDialog("statement")}
+                    className="ml-auto font-mono text-[10px] text-muted-foreground hover:text-foreground"
+                  >
+                    [ print statement ]
+                  </button>
                 </CardContent>
               </Card>
             )}
 
-            {/* charts */}
+
             <Suspense fallback={<Loading />}>
               <Charts expenses={expenses} baseCurrency={baseCurrency} />
             </Suspense>
 
-            {/* collapsible expenses */}
             <Card className={`${GLASS} overflow-hidden rounded-2xl p-0`}>
               <div className="flex items-center justify-between gap-3 px-5 py-4">
                 <button onClick={() => setExpensesOpen((o) => !o)} className="flex flex-1 items-center gap-2 text-left">
@@ -246,7 +261,6 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Scan & Add: close only via X or on success (no outside-click / Esc) */}
       <Dialog open={openDialog === "scan"} onOpenChange={(o) => setOpenDialog(o ? "scan" : null)}>
         <DialogContent
           className={DIALOG}
@@ -303,7 +317,25 @@ export default function Dashboard() {
       <Dialog open={openDialog === "savings"} onOpenChange={(o) => setOpenDialog(o ? "savings" : null)}>
         <DialogContent className={`${DIALOG} max-h-[88vh] overflow-y-auto glass-scroll`}>
           <DialogTitle className="sr-only">Savings</DialogTitle>
-          <SavingsCard reloadKey={ledgerReload} onChange={bump} />
+          <SavingsCard
+            reloadKey={ledgerReload}
+            onChange={bump}
+            onViewDistribution={(payload) => { setDistData(payload); setOpenDialog("distribution"); }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={openDialog === "distribution"} onOpenChange={(o) => setOpenDialog(o ? "distribution" : null)}>
+        <DialogContent className={`${DIALOG} max-h-[88vh] overflow-y-auto glass-scroll`}>
+          <DialogTitle className="sr-only">Distribution</DialogTitle>
+          {distData && <AllocationReceipt {...distData} />}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={openDialog === "statement"} onOpenChange={(o) => setOpenDialog(o ? "statement" : null)}>
+        <DialogContent className={DIALOG}>
+          <DialogTitle className="sr-only">Statement</DialogTitle>
+          <Statement />
         </DialogContent>
       </Dialog>
 
@@ -316,7 +348,6 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* filter */}
       <Dialog open={openDialog === "filter"} onOpenChange={(o) => setOpenDialog(o ? "filter" : null)}>
         <DialogContent className="max-w-md border-0 bg-transparent p-0 shadow-none">
           <DialogTitle className="sr-only">Filter expenses</DialogTitle>

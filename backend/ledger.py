@@ -199,6 +199,76 @@ def cashflow(db, user, month=None):
         "monthly_income_avg": monthly_income_avg(db, user),
     }
 
+# --- insert into backend/ledger.py, directly after the existing cashflow() function ---
+
+def _prior_month_keys(ym, n):
+    y, m = int(ym[:4]), int(ym[5:7])
+    keys = []
+    for i in range(1, n + 1):
+        mm = m - i
+        yy = y
+        while mm <= 0:
+            mm += 12
+            yy -= 1
+        keys.append(f"{yy:04d}-{mm:02d}")
+    return keys
+
+
+def statement_summary(db, user, month=None):
+    """Month-to-date spending vs. the trailing 3-month average, plus a
+    category breakdown for the current month. Same expense convention as
+    _ledger_expenses_for_ai in main.py (to_account_id is None = an outflow
+    with no destination account = an expense). Additive read only — no
+    schema change, no new table."""
+    ym = month or utcnow().strftime("%Y-%m")
+    entries = db.query(models.LedgerEntry).filter(
+        models.LedgerEntry.user_id == user.id,
+        models.LedgerEntry.to_account_id.is_(None),
+    ).all()
+
+    def month_key(e):
+        d = e.fx_date or e.date or ""
+        return d[:7] if isinstance(d, str) and len(d) >= 7 else None
+
+    monthly_totals = {}
+    category_totals = {}
+    for e in entries:
+        mk = month_key(e)
+        if not mk:
+            continue
+        v = entry_base(e)
+        monthly_totals[mk] = monthly_totals.get(mk, 0.0) + v
+        if mk == ym:
+            cat = e.category or "Uncategorized"
+            category_totals[cat] = category_totals.get(cat, 0.0) + v
+
+    mtd = round(monthly_totals.get(ym, 0.0), 2)
+
+    prior_keys = _prior_month_keys(ym, 3)
+    prior_vals = [monthly_totals[k] for k in prior_keys if k in monthly_totals]
+    trailing_avg = round(sum(prior_vals) / len(prior_vals), 2) if prior_vals else None
+
+    delta_pct = None
+    direction = "flat"
+    if trailing_avg and trailing_avg > 0:
+        delta_pct = round(((mtd - trailing_avg) / trailing_avg) * 100, 1)
+        direction = "above" if delta_pct > 0.5 else ("below" if delta_pct < -0.5 else "flat")
+
+    by_category = sorted(
+        [{"name": k, "amount": round(v, 2)} for k, v in category_totals.items()],
+        key=lambda c: c["amount"], reverse=True,
+    )
+
+    return {
+        "currency": user.primary_currency or "SGD",
+        "month": ym,
+        "mtd_spending": mtd,
+        "trailing_avg": trailing_avg,
+        "delta_pct": delta_pct,
+        "direction": direction,
+        "by_category": by_category,
+    }
+
 
 # ---------------- wallet reconciliation ----------------
 

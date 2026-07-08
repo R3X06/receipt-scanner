@@ -3,6 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
+import { useState } from "react";
 
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 
@@ -39,6 +40,8 @@ function monthKey(e) {
 }
 
 function CategoryChart({ expenses, baseCurrency }) {
+  const [hoverIdx, setHoverIdx] = useState(null);
+
   const data = expenses
     .reduce((acc, e) => {
       const existing = acc.find((item) => item.name === e.category);
@@ -72,7 +75,14 @@ function CategoryChart({ expenses, baseCurrency }) {
                 stroke="none"
               >
                 {data.map((d, i) => (
-                  <Cell key={i} fill={colorFor(d.name, i)} />
+                  <Cell
+                    key={i}
+                    fill={colorFor(d.name, i)}
+                    opacity={hoverIdx === null || hoverIdx === i ? 1 : 0.35}
+                    onMouseEnter={() => setHoverIdx(i)}
+                    onMouseLeave={() => setHoverIdx(null)}
+                    style={{ transition: "opacity 0.15s ease", cursor: "pointer" }}
+                  />
                 ))}
               </Pie>
               <Tooltip
@@ -90,9 +100,15 @@ function CategoryChart({ expenses, baseCurrency }) {
 
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
           {data.map((item, i) => (
-            <div key={i} className="flex items-center gap-2 text-sm">
+            <div
+              key={i}
+              className="flex cursor-pointer items-center gap-2 text-sm transition-opacity"
+              style={{ opacity: hoverIdx === null || hoverIdx === i ? 1 : 0.45 }}
+              onMouseEnter={() => setHoverIdx(i)}
+              onMouseLeave={() => setHoverIdx(null)}
+            >
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: colorFor(item.name, i) }} />
-              <span className="text-muted-foreground">
+              <span className={hoverIdx === i ? "text-foreground" : "text-muted-foreground"}>
                 {item.name}{" "}
                 <span className="text-foreground tabular-nums">
                   {baseCurrency} {item.value.toFixed(2)}

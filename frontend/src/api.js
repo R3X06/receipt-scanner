@@ -234,6 +234,16 @@ export async function getCashflow(token) {
   return data;
 }
 
+// --- insert into frontend/src/api.js, right after getCashflow() ---
+
+export async function getStatement(token, month) {
+  const q = month ? `?month=${encodeURIComponent(month)}` : "";
+  const res = await fetch(`${API_URL}/ledger/statement${q}`, { headers: { Authorization: `Bearer ${token}` } });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Failed to fetch statement");
+  return data;
+}
+
 export async function addLedgerIncome(token, payload) {
   const res = await fetch(`${API_URL}/ledger/income`, {
     method: "POST",

@@ -28,7 +28,10 @@ export default function ReconciliationCard({ reloadKey, onAddIncome, onChange })
   const items = data.contributing || [];
 
   return (
-    <Card className="rounded-2xl border-amber-500/30 bg-amber-500/[0.06] backdrop-blur-xl">
+    <Card
+      className="kalla-alert-in rounded-2xl border-amber-500/30 bg-amber-500/[0.06] backdrop-blur-xl"
+      onAnimationEnd={(e) => { e.currentTarget.style.animation = "none"; }}
+    >
       <CardContent className="space-y-3">
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />

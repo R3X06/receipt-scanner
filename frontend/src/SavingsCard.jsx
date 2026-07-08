@@ -15,6 +15,7 @@ import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, us
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
+
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 const pill = (active) =>
   `flex-1 rounded-full px-2 py-1 text-xs transition ${active ? "bg-primary font-medium text-primary-foreground" : "text-muted-foreground"}`;
@@ -241,7 +242,7 @@ function EmergencyBlock({ em, fmt, busy, onConfigure }) {
   );
 }
 
-export default function SavingsCard({ reloadKey, onChange }) {
+export default function SavingsCard({ reloadKey, onChange, onViewDistribution }) {
   const { token, user, setUser } = useAuth();
   const base = user?.primary_currency || "SGD";
   const fmt = fmtWith(base);
@@ -366,6 +367,14 @@ export default function SavingsCard({ reloadKey, onChange }) {
               ? "Rank (drag order) decides which reserves win if savings fall short."
               : "Order doesn't affect this split."}
         </p>
+
+        <button
+          type="button"
+          onClick={() => onViewDistribution?.({ unallocated: data?.unallocated, goals, currency: base })}
+          className="w-full rounded-lg border border-dashed border-primary/40 bg-primary/[0.06] py-2.5 text-xs text-primary-enhanced hover:bg-primary/[0.12]"
+        >
+          View distribution
+        </button>
 
         {/* goals (emergency is pinned above; these are the rest) */}
         <div className="space-y-2">

@@ -5,6 +5,7 @@ import IncomeForm from "./IncomeForm";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, ChevronDown, Trash2, Wallet as WalletIcon } from "lucide-react";
+import SettleNumber from "./SettleNumber";
 
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 
@@ -52,15 +53,17 @@ export default function WalletCard({ reloadKey, onChange }) {
         </div>
 
         <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-semibold tabular-nums">{fmt(walletBal)}</span>
+          <span className="text-2xl font-semibold tabular-nums">
+            {base} <SettleNumber value={walletBal} />
+          </span>
           <span className="text-xs text-muted-foreground">available now</span>
         </div>
 
         {cf && (
           <div className="grid grid-cols-3 gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm">
-            <Stat label="In this month" value={fmt(cf.income)} className="text-primary" />
-            <Stat label="Spent" value={fmt(cf.spending)} />
-            <Stat label="To savings" value={fmt(cf.to_savings_net)} />
+            <Stat label="In this month" value={<><span>{base}</span> <SettleNumber value={cf.income} /></>} className="text-primary" />
+            <Stat label="Spent" value={<><span>{base}</span> <SettleNumber value={cf.spending} /></>} />
+            <Stat label="To savings" value={<><span>{base}</span> <SettleNumber value={cf.to_savings_net} /></>} />
           </div>
         )}
 
