@@ -135,3 +135,5 @@ receipt-scanner/
 ## Status
 
 Active portfolio project. Backend is feature-complete and tested; current work is on packaging (mobile polish, demo) and a scenario-simulation feature that runs the allocation engine over hypothetical inputs ("if I cut dining 20%, when does the emergency fund fill?").
+
+@R3X06
