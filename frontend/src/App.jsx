@@ -5,6 +5,7 @@ import Dashboard from "./Dashboard";
 import Landing from "./Landing";
 import VerifyEmail from "./VerifyEmail";
 import ResetPassword from "./ResetPassword";
+import { Toaster } from "sonner"
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -37,8 +38,13 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+      <Toaster theme="dark" position="top-center" toastOptions={{
+        style: { background: "rgba(255,255,255,0.04)", backdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }
+      }} />
+    </>
   );
 }

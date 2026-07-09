@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import {
+import { ResponsiveDialog } from "@/components/ui/responsive-dialog";import {
   LogOut,
   ScanLine,
   Plus,
@@ -261,92 +261,53 @@ export default function Dashboard() {
         )}
       </div>
 
-      <Dialog open={openDialog === "scan"} onOpenChange={(o) => setOpenDialog(o ? "scan" : null)}>
-        <DialogContent
-          className={DIALOG}
-          onInteractOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-        >
-          <DialogTitle className="sr-only">Scan or import</DialogTitle>
-          <Suspense fallback={<Loading />}>
-            <ScanImport onExpenseAdded={handleExpenseAddedAndClose} onDone={() => setOpenDialog(null)} />
-          </Suspense>
-        </DialogContent>
-      </Dialog>
+      <ResponsiveDialog open={openDialog === "scan"} onOpenChange={(o) => setOpenDialog(o ? "scan" : null)} title="Scan or import" className={DIALOG}>
+        <Suspense fallback={<Loading />}>
+          <ScanImport onExpenseAdded={handleExpenseAddedAndClose} onDone={() => setOpenDialog(null)} />
+        </Suspense>
+      </ResponsiveDialog>
 
-      <Dialog open={openDialog === "add"} onOpenChange={(o) => setOpenDialog(o ? "add" : null)}>
-        <DialogContent
-          className={DIALOG}
-          onInteractOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-        >
-          <DialogTitle className="sr-only">Add expense</DialogTitle>
-          <ExpenseForm onExpenseAdded={handleExpenseAddedAndClose} />
-        </DialogContent>
-      </Dialog>
+      <ResponsiveDialog open={openDialog === "add"} onOpenChange={(o) => setOpenDialog(o ? "add" : null)} title="Add expense" className={DIALOG}>
+        <ExpenseForm onExpenseAdded={handleExpenseAddedAndClose} />
+      </ResponsiveDialog>
 
-      <Dialog open={openDialog === "settings"} onOpenChange={(o) => setOpenDialog(o ? "settings" : null)}>
-        <DialogContent
-          className={DIALOG}
-          onInteractOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-        >
-          <DialogTitle className="sr-only">Settings</DialogTitle>
-          <Suspense fallback={<Loading />}>
-            <Settings onClose={() => setOpenDialog(null)} />
-          </Suspense>
-        </DialogContent>
-      </Dialog>
+      <ResponsiveDialog open={openDialog === "settings"} onOpenChange={(o) => setOpenDialog(o ? "settings" : null)} title="Settings" className={DIALOG}>
+        <Suspense fallback={<Loading />}>
+          <Settings onClose={() => setOpenDialog(null)} />
+        </Suspense>
+      </ResponsiveDialog>
 
-      <Dialog open={openDialog === "ask"} onOpenChange={(o) => setOpenDialog(o ? "ask" : null)}>
-        <DialogContent className={DIALOG}>
-          <DialogTitle className="sr-only">Ask AI</DialogTitle>
-          <Suspense fallback={<Loading />}>
-            <AskAI />
-          </Suspense>
-        </DialogContent>
-      </Dialog>
+      <ResponsiveDialog open={openDialog === "ask"} onOpenChange={(o) => setOpenDialog(o ? "ask" : null)} title="Ask AI" className={DIALOG}>
+        <Suspense fallback={<Loading />}>
+          <AskAI />
+        </Suspense>
+      </ResponsiveDialog>
 
-      <Dialog open={openDialog === "wallet"} onOpenChange={(o) => setOpenDialog(o ? "wallet" : null)}>
-        <DialogContent className={`${DIALOG} max-h-[88vh] overflow-y-auto glass-scroll`}>
-          <DialogTitle className="sr-only">Wallet</DialogTitle>
-          <WalletCard reloadKey={ledgerReload} onChange={bump} />
-        </DialogContent>
-      </Dialog>
+      <ResponsiveDialog open={openDialog === "wallet"} onOpenChange={(o) => setOpenDialog(o ? "wallet" : null)} title="Wallet" className={`${DIALOG} max-h-[88vh] overflow-y-auto glass-scroll`}>
+        <WalletCard reloadKey={ledgerReload} onChange={bump} />
+      </ResponsiveDialog>
 
-      <Dialog open={openDialog === "savings"} onOpenChange={(o) => setOpenDialog(o ? "savings" : null)}>
-        <DialogContent className={`${DIALOG} max-h-[88vh] overflow-y-auto glass-scroll`}>
-          <DialogTitle className="sr-only">Savings</DialogTitle>
-          <SavingsCard
-            reloadKey={ledgerReload}
-            onChange={bump}
-            onViewDistribution={(payload) => { setDistData(payload); setOpenDialog("distribution"); }}
-          />
-        </DialogContent>
-      </Dialog>
+      <ResponsiveDialog open={openDialog === "savings"} onOpenChange={(o) => setOpenDialog(o ? "savings" : null)} title="Savings" className={`${DIALOG} max-h-[88vh] overflow-y-auto glass-scroll`}>
+        <SavingsCard
+          reloadKey={ledgerReload}
+          onChange={bump}
+          onViewDistribution={(payload) => { setDistData(payload); setOpenDialog("distribution"); }}
+        />
+      </ResponsiveDialog>
 
-      <Dialog open={openDialog === "distribution"} onOpenChange={(o) => setOpenDialog(o ? "distribution" : null)}>
-        <DialogContent className={`${DIALOG} max-h-[88vh] overflow-y-auto glass-scroll`}>
-          <DialogTitle className="sr-only">Distribution</DialogTitle>
-          {distData && <AllocationReceipt {...distData} />}
-        </DialogContent>
-      </Dialog>
+      <ResponsiveDialog open={openDialog === "distribution"} onOpenChange={(o) => setOpenDialog(o ? "distribution" : null)} title="Distribution" className={`${DIALOG} max-h-[88vh] overflow-y-auto glass-scroll`}>
+        {distData && <AllocationReceipt {...distData} />}
+      </ResponsiveDialog>
 
-      <Dialog open={openDialog === "statement"} onOpenChange={(o) => setOpenDialog(o ? "statement" : null)}>
-        <DialogContent className={DIALOG}>
-          <DialogTitle className="sr-only">Statement</DialogTitle>
-          <Statement />
-        </DialogContent>
-      </Dialog>
+      <ResponsiveDialog open={openDialog === "statement"} onOpenChange={(o) => setOpenDialog(o ? "statement" : null)} title="Statement" className={DIALOG}>
+        <Statement />
+      </ResponsiveDialog>
 
-      <Dialog open={openDialog === "insights"} onOpenChange={(o) => setOpenDialog(o ? "insights" : null)}>
-        <DialogContent className={DIALOG}>
-          <DialogTitle className="sr-only">Insights</DialogTitle>
-          <Suspense fallback={<Loading />}>
-            <Insights />
-          </Suspense>
-        </DialogContent>
-      </Dialog>
+      <ResponsiveDialog open={openDialog === "insights"} onOpenChange={(o) => setOpenDialog(o ? "insights" : null)} title="Insights" className={DIALOG}>
+        <Suspense fallback={<Loading />}>
+          <Insights />
+        </Suspense>
+      </ResponsiveDialog>
 
       <Dialog open={openDialog === "filter"} onOpenChange={(o) => setOpenDialog(o ? "filter" : null)}>
         <DialogContent className="max-w-md border-0 bg-transparent p-0 shadow-none">

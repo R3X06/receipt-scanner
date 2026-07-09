@@ -46,8 +46,18 @@ export default function AllocationReceipt({ unallocated, goals, currency = "SGD"
   );
   const total = segments.reduce((s, seg) => s + seg.value, 0);
 
-  if (total <= 0.005) return null;
-
+  if (total <= 0.005) {
+    return (
+      <Card className={`${GLASS} rounded-2xl`}>
+        <CardContent className="space-y-2 py-10 text-center">
+          <h2 className="text-base font-medium">Distribution</h2>
+          <p className="text-xs text-muted-foreground">
+            No savings allocated yet. Add a goal and deposit into savings to see the breakdown here.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
   const colX = 40;
   const colW = 70;
   const topY = 10;

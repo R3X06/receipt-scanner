@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import { createExpense, suggestCategory } from "./api";
 import { useAuth } from "./AuthContext";
 import { CATEGORIES, CURRENCIES } from "./constants";
@@ -60,6 +61,7 @@ export default function ExpenseForm({ onExpenseAdded }) {
         wallet_linked: walletLinked,
       });
       onExpenseAdded(expense);
+      toast.success(`Added ${expense.merchant || "expense"} — ${expense.currency} ${expense.amount}`);
       setAmount("");
       setMerchant("");
       setWhen(nowLocal());
@@ -68,6 +70,7 @@ export default function ExpenseForm({ onExpenseAdded }) {
       setCategoryTouched(false);
     } catch (err) {
       setError(err.message);
+      toast.error(err.message);
     } finally {
       setLoading(false);
     }

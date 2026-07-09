@@ -4,6 +4,7 @@ import { Settings, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "./AuthContext";
 import { getCategories } from "./api";
 import SettleNumber from "./SettleNumber";
+import { motion } from "motion/react";
 
 const baseAmount = (e) => (e.amount_base != null ? e.amount_base : e.amount);
 
@@ -112,12 +113,17 @@ export default function ProfileCard({ user, expenses, onOpenSettings }) {
         {avatar ? <span className="text-2xl leading-none">{avatar}</span> : initials}
       </button>
 
-      <div
-        className={`absolute left-0 top-0 z-20 w-72 origin-top-left transition-all duration-300 ease-out ${
-          open ? "scale-100 opacity-100" : "pointer-events-none scale-90 opacity-0"
-        }`}
+      <motion.div
+        initial={false}
+        animate={open ? { scale: 1, opacity: 1 } : { scale: 0.9, opacity: 0 }}
+        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+        style={{ pointerEvents: open ? "auto" : "none", willChange: "transform, opacity" }}
+        className="absolute left-0 top-0 z-20 w-72 origin-top-left"
       >
-        <Card className="rounded-2xl border-white/10 bg-white/[0.06] shadow-2xl shadow-black/50 backdrop-blur-2xl">
+        <Card
+          className="rounded-2xl border-white/10 shadow-2xl shadow-black/50 backdrop-blur-2xl"
+          style={{ backgroundColor: "#1b2026f8" }}
+        >
           <CardContent className="space-y-4">
             <div className="flex items-center gap-3">
               <button
@@ -184,7 +190,7 @@ export default function ProfileCard({ user, expenses, onOpenSettings }) {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </motion.div>
     </div>
   );
 }
