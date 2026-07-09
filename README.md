@@ -1,55 +1,84 @@
 # KALLA
 
-**A personal-finance and receipt-scanning app built on an event-sourced, double-entry ledger.**
+**A financial modeling system, not a receipt tracker.**
 
-[![CI](https://github.com/R3X06/receipt-scanner/actions/workflows/ci.yml/badge.svg)](https://github.com/R3X06/receipt-scanner/actions/workflows/ci.yml)
+Most personal finance apps store a balance as a number and mutate it every time something happens. KALLA doesn't. Every balance you see is *derived* — computed on the fly from an immutable, append-only ledger of transactions, the same pattern double-entry bookkeeping and event-sourced systems have used for centuries. Nothing is ever overwritten. Nothing can silently drift out of sync with reality.
 
-KALLA tracks spending, savings, and goals on top of an immutable accounting ledger — every balance is *derived* from a log of events, never stored and mutated. Scan a receipt, log income, set savings goals, and the system computes balances, cash-flow, an emergency-fund target, and a goal-by-goal savings allocation from first principles.
+[**Live demo →**](https://mahanr3x06.com) · [Screenshots](#screenshots) · [Architecture](#architecture) · [Tech stack](#tech-stack)
 
-**Live demo:** https://receipt-scanner-r3-x.vercel.app — sign in with `demo@demo.com` / `demo1234`
-
-<!-- TODO: add 2–3 screenshots (dashboard, goals/allocation view, receipt scan) and/or a short demo GIF here -->
-<!-- ![Dashboard](docs/dashboard.png) -->
+![CI](https://img.shields.io/badge/CI-passing-brightgreen) ![Tests](https://img.shields.io/badge/tests-274%2B%20passing-brightgreen) ![Stack](https://img.shields.io/badge/stack-FastAPI%20%2B%20React-blueviolet)
 
 ---
 
-## Why it's built this way (the interesting part)
+## Why this architecture
 
-Most personal-finance apps store a `balance` column and mutate it on every transaction. KALLA deliberately doesn't. The design choices below are the point of the project:
+Every mainstream budgeting app I looked at — including well-reviewed ones — stores balances the same way: a `Transaction` row with a mutable `amount` field, and an account total that gets incremented or decremented in place. I checked one popular iOS app's local database directly: five entities, a mutable `Transaction.amount`, no `Account` entity at all, budgets stored as independent numbers with no traceable link back to the transactions that produced them.
 
-- **Event-sourced ledger.** The single source of truth is an append-only `LedgerEntry` log. Balances, net worth, cash-flow, and goal allocations are all *recomputed* from that log on read. Nothing is stored that could drift out of sync with the events that produced it.
-- **Double-entry bookkeeping as the domain model.** Every entry has a `from` and `to` account; `NULL` on a side means "the World" (income if `from` is null, an expense if `to` is null). Money is conserved by construction.
-- **A two-pass savings-allocation engine.** Goals are *derived claims* over the savings balance, not accounts that hold money. Pass 1 funds each goal's reserve senior-first (the emergency fund is always most senior); pass 2 splits the remainder by a chosen strategy — **waterfall**, **proportional** (deadline-weighted), or **even** — capping each goal at its target and re-spreading any overflow.
-- **A derived emergency fund.** Its target isn't typed in; it's computed as `coverage_months × average essential monthly spend`, so it tracks real spending automatically.
-- **Orthogonal flags, not schema forks.** `wallet_linked` and `inferred` change how an entry is *interpreted* during derivation (e.g. an expense paid from untracked money, or a declared opening balance) without multiplying entry types.
-- **Temporal modelling.** `date` (the calendar day, for FX and reporting) is separate from `occurred_at` (the precise event time that orders the running wallet), so back-dated entries reconcile correctly.
-- **Ports & adapters.** FX and OCR sit behind provider interfaces with a swappable registry, so the external services can be replaced — and mocked in tests — without touching the core.
+That works, until it doesn't. Edit a transaction after the fact and you've silently rewritten history. Ask "why is this account balance what it is" and there's no answer — the number just *is*, with no derivation you can audit or replay.
 
-There are deeper write-ups in [`KALLA_AI_pipeline_upgrade.md`](KALLA_AI_pipeline_upgrade.md) and `KALLA_state_and_plan.md`.
+KALLA is built the other way round:
+
+- **The ledger is the single source of truth.** Every transaction is an immutable, append-only entry — never updated, never deleted, only appended or reversed with a new offsetting entry.
+- **Balances are derived, not stored.** An account's balance is the result of folding over its ledger entries, computed fresh each time. There is no `balance` column to drift out of sync with reality.
+- **Every number is auditable.** Because nothing is mutated, you can always answer "how did we get here" by replaying the ledger — a property mutable-state apps structurally cannot offer.
+
+This isn't a stylistic preference. It's the difference between an app that *shows* you a number and a system that can *prove* one.
+
+---
+
+## Screenshots
+
+<!-- Add screenshots to /docs/screenshots and update the paths below.
+     Suggested set: dashboard (desktop), floating dock hover state,
+     allocation engine / savings distribution, mobile responsive view,
+     the Statement receipt-print animation. -->
+
+| Dashboard | Allocation engine |
+|---|---|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Allocation](docs/screenshots/allocation.png) |
+
+| Mobile | Statement |
+|---|---|
+| ![Mobile](docs/screenshots/mobile.png) | ![Statement](docs/screenshots/statement.png) |
 
 ---
 
 ## Architecture
 
+<!-- Diagram: ledger → derived balances → two-pass allocation engine.
+     Build with the Visualizer and drop the exported image here, or
+     keep as a text description if you'd rather not maintain an image. -->
+
 ```
-React + Vite (Vercel)
-        │  HTTPS / JWT (Bearer)
-        ▼
-FastAPI (Railway)
- ├── main.py        transport / endpoints
- ├── auth.py        Argon2id + JWT
- ├── ledger.py      the engine: derivation + two-pass allocation (pure functions)
- ├── providers.py   FX / OCR ports + swappable registry
- ├── fx.py          currency conversion (Frankfurter)
- ├── ocr.py         receipt OCR (Google Vision) + parsing
- ├── ai.py          spending insights (OpenAI)
- └── models.py      SQLAlchemy schema (the immutable LedgerEntry log)
+Ingestion (CSV / OCR / PDF)
         │
         ▼
-PostgreSQL (prod) · SQLite (local)
+  Double-entry ledger  ──────►  Derived balances (computed, never stored)
+   (immutable, append-only)              │
+        │                                ▼
+        │                     Two-pass allocation engine
+        │                     ┌─────────────────────────┐
+        │                     │ Pass 1 — fund reserves,  │
+        │                     │  senior-first (emergency │
+        │                     │  fund pinned at −1)      │
+        │                     │ Pass 2 — spread remainder│
+        │                     │  by strategy, cap-and-   │
+        │                     │  redistribute overflow   │
+        │                     └─────────────────────────┘
+        ▼
+  Reconciliation & reporting
+   (Statement, Insights, dashboards)
 ```
 
-The core engine (`ledger.py`) is intentionally **functional** — derivation over an immutable log reads most naturally as pure functions, which is also why it's so thoroughly testable. OOP is concentrated where it fits: the SQLAlchemy/Pydantic data layer.
+### Core components
+
+**Double-entry ledger.** Single source of truth. Every mutation is an event; balances are folds over the event log, not stored state.
+
+**Two-pass allocation engine.** Pass 1 funds every reserve senior-first, with the emergency fund pinned at priority −1 so it's always filled before discretionary goals. Pass 2 spreads whatever remains according to the chosen strategy (waterfall, proportional, or even split), with cap-and-redistribute logic so overflow from a capped goal doesn't just vanish — it flows to the next eligible target.
+
+**Source-agnostic ingestion pipeline.** CSV, PayNow OCR, and PDF statement adapters all feed the same ledger through one path. Deduplication runs on two keys: an exact match on source-native transaction ID (skip silently), and a content hash for cross-source collision flagging (surface for the user to decide). Counterparty names are salted per-user via HMAC before storage — no raw merchant-identity linkage across accounts. Raw uploaded artifacts (receipt images, statement PDFs) are ephemeral, not retained after processing.
+
+**Security.** Argon2id password hashing, rate limiting via slowapi, email-verification-gated signup (credentials live in a signed JWT — no database write happens until the verification link is clicked, so unverified signups leave no trace), IDOR sweep clean, OCR prompt-injection fencing on extracted text, file upload validation, `/docs` disabled in production.
 
 ---
 
@@ -57,83 +86,49 @@ The core engine (`ledger.py`) is intentionally **functional** — derivation ove
 
 | Layer | Choice |
 |---|---|
-| Backend | FastAPI, SQLAlchemy, Pydantic v2 |
-| Database | PostgreSQL (prod), SQLite (local) |
-| Frontend | React, Vite, Tailwind v4, shadcn/ui |
-| Auth | Argon2id (passlib + argon2-cffi), JWT |
-| External | Google Vision (OCR), OpenAI (insights), Frankfurter (FX) |
-| Quality | pytest, ruff, GitHub Actions CI |
-| Hosting | Railway (API), Vercel (web) |
+| Backend | FastAPI, SQLAlchemy, PostgreSQL (prod) / SQLite (local) |
+| Frontend | React + Vite, Tailwind CSS v4, shadcn/ui, Recharts |
+| Auth | Argon2id, JWT, email verification via Resend |
+| OCR | Google Vision |
+| AI | OpenAI (insights pipeline — rework in progress, see Roadmap) |
+| Deployment | Railway (backend), Vercel (frontend), Cloudflare Registrar (domain) |
+| CI | GitHub Actions — ruff + pytest, 274+ tests |
 
 ---
 
-## Testing & quality
-
-- **170 automated tests** covering the correctness-critical core: the allocation engine (including a randomized **conservation** property — money is never created or destroyed by the split), balance/cash-flow/reconciliation derivation, the provider seam, and endpoint-level security.
-- **CI on every push and PR** runs `ruff` + `pytest` (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
-- **Security:** auth follows the OWASP baseline — Argon2id hashing with transparent rehash-on-login, password policy at signup, a JWT secret that hard-fails in production if unset, and identity keyed on an immutable user id. Cross-tenant writes are rejected.
-- **Fail-closed external calls:** a currency conversion that can't reach a rate is refused (logged, `503`) rather than silently storing a wrong amount.
-
-Run the suite:
+## Getting started
 
 ```bash
+git clone https://github.com/R3X06/receipt-scanner.git
+cd receipt-scanner
+
+# Backend
 cd backend
-pip install -r requirements.txt -r requirements-dev.txt
-pytest
-```
-
----
-
-## Running locally
-
-### Backend (FastAPI)
-
-```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+python -c "import main"   # sanity check
 uvicorn main:app --reload
-```
 
-Environment variables (a `.env` in `backend/` works via python-dotenv):
-
-| Variable | Purpose |
-|---|---|
-| `DATABASE_URL` | Postgres URL in prod; defaults to local SQLite if unset |
-| `JWT_SECRET` | JWT signing key — **required in production** (the app refuses to start otherwise) |
-| `ENVIRONMENT` | `production` enables strict secret checks + JSON logs; defaults to `development` |
-| `LOG_LEVEL` | Logging level (default `INFO`) |
-| `ALLOWED_ORIGINS` | Comma-separated CORS origins (default `http://localhost:5173`) |
-| `GOOGLE_VISION_API_KEY` | Receipt OCR |
-| `OPENAI_API_KEY` | AI spending insights |
-
-### Frontend (React + Vite)
-
-```bash
-cd frontend
+# Frontend
+cd ../frontend
 npm install
 npm run dev
 ```
 
-Set `VITE_API_URL` to the backend URL (defaults to `http://localhost:8000`).
+Required environment variables (backend): `RESEND_API_KEY`, `FROM_EMAIL`, `FRONTEND_URL`, `ALLOWED_ORIGINS`, `ENVIRONMENT`. Frontend: `VITE_API_URL`.
 
 ---
 
-## Project structure
+## Roadmap
 
-```
-receipt-scanner/
-├── backend/        FastAPI app, ledger engine, tests
-│   ├── tests/      pytest suite (170 tests)
-│   └── ...
-├── frontend/       React + Vite client
-└── .github/workflows/ci.yml
-```
+Queued, in dependency order — each gated behind the previous one shipping:
+
+- **Scenario simulation** — run the existing deterministic allocation engine over hypothetical inputs without persisting anything, so you can ask "what if" without touching real data.
+- **Awareness layer** — runway indicator, recurring/subscription detection, category-drift nudges.
+- **Guidance layer** — a reworked AI insights pipeline: a deterministic snapshot layer (z-scores, recurring detection, outlier attribution) feeding a multi-stage model pipeline with a critic pass from a different model family, designed to prevent structural hallucination and degrade gracefully to templates rather than fail silently.
+- **Split expenses / investment & tax tracking** — deferred pending a decision on whether these fit as new Account types or require new primitives entirely — the kind of question the ledger architecture was built to make answerable without a schema rewrite.
 
 ---
 
-## Status
+## License
 
-Active portfolio project. Backend is feature-complete and tested; current work is on packaging (mobile polish, demo) and a scenario-simulation feature that runs the allocation engine over hypothetical inputs ("if I cut dining 20%, when does the emergency fund fill?").
-
-@R3X06
+<!-- Add your license here -->
