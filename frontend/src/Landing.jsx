@@ -11,18 +11,27 @@ export default function Landing({ onGetStarted }) {
       justifyContent: "center",
       padding: "40px 24px",
       fontFamily: "'Inter', system-ui, sans-serif",
+      overflowX: "hidden",
     }}>
 
-      {/* Logo */}
-      <div style={{ filter: "drop-shadow(0 0 12px #A855F7aa) drop-shadow(0 0 32px #A855F760)" }}>
+      {/* Logo — width caps at 460px on larger screens, shrinks to fit narrow
+          phones via CSS instead of the fixed pixel width that was
+          overflowing anything under ~500px wide */}
+      <style>{`
+        .kalla-landing-logo { width: min(72vw, 460px); }
+        .kalla-landing-logo svg { width: 100%; height: auto; display: block; }
+      `}</style>
+      <div
+        className="kalla-landing-logo"
+        style={{ filter: "drop-shadow(0 0 12px #A855F7aa) drop-shadow(0 0 32px #A855F760)" }}
+      >
         <KallaLogo width={460} />
       </div>
 
       {/* Tagline */}
       <p style={{
         marginTop: 18,
-        font: "caption",
-        fontSize: "clamp(12px, 1vw, 10px)",
+        fontSize: "clamp(10px, 2.5vw, 13px)",
         color: "hsla(270, 100%, 95%, 0.5)",
         letterSpacing: "0.08em",
         textTransform: "capitalize",
@@ -45,17 +54,19 @@ export default function Landing({ onGetStarted }) {
         immutable record. Not a spreadsheet. A financial model.
       </p>
 
-      {/* Get Started */}
+      {/* Get Started — padding/minHeight sized to clear the ~44px minimum
+          recommended touch target (was ~28-30px tall before) */}
       <button
         onClick={onGetStarted}
         style={{
           marginTop: 48,
-          padding: "7px 24px",
+          padding: "13px 32px",
+          minHeight: 44,
           background: "#a955f7b1",
           color: "#ffffffe1",
           border: "none",
           borderRadius: 10,
-          fontSize: 12,
+          fontSize: 14,
           fontWeight: 600,
           letterSpacing: "0.05em",
           cursor: "pointer",
