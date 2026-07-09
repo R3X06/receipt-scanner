@@ -31,7 +31,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { ResponsiveDialog } from "@/components/ui/responsive-dialog";import {
+import { ResponsiveDialog } from "@/components/ui/responsive-dialog";
+import {
   LogOut,
   ScanLine,
   Plus,
@@ -44,6 +45,10 @@ import { ResponsiveDialog } from "@/components/ui/responsive-dialog";import {
 } from "lucide-react";
 import AllocationReceipt from "./AllocationReceipt";
 import Statement from "./Statement";
+import DottedGlowBackground from "@/components/ui/DottedGlowBackground";
+import { LedgerGrid } from "@/components/ui/ledger-grid";
+import { GridPattern } from "@/components/ui/grid-pattern";
+import { FloatingDock } from "@/components/ui/floating-dock";
 
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 const DIALOG = "max-w-lg border-0 bg-transparent p-0 shadow-none";
@@ -56,7 +61,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ start: "", end: "", category: "" });
 
-  const [openDialog, setOpenDialog] = useState(null); // 'scan'|'add'|'ask'|'insights'|'filter'|'settings'
+  const [openDialog, setOpenDialog] = useState(null);
   const [distData, setDistData] = useState(null);
   const [expensesOpen, setExpensesOpen] = useState(true);
   const [ledgerReload, setLedgerReload] = useState(0);
@@ -115,10 +120,17 @@ export default function Dashboard() {
     { key: "insights", label: "Insights", icon: Lightbulb },
   ];
 
+  const dockItems = actions.map(({ key, label, icon: Icon }) => ({
+    dockKey: key,
+    title: label,
+    icon: <Icon className="h-full w-full" />,
+  }));
+
   const noExpenses = !loading && expenses.length === 0 && !hasFilter;
 
   return (
     <div className="relative min-h-screen p-4 sm:p-6">
+      <DottedGlowBackground />
       <div className="relative z-10 mx-auto max-w-3xl space-y-4">
         <div className="pointer-events-none select-none text-left text-glow3 leading-none" aria-hidden="true" >
           <span
@@ -145,37 +157,24 @@ export default function Dashboard() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
-          {actions.map(({ key, label, icon: Icon }, i) => (
-            <Button
-              key={key}
-              variant="outline"
-              onClick={() => setOpenDialog(key)}
-              onAnimationEnd={(e) => {
-                e.currentTarget.style.animation = "none";
-                e.currentTarget.style.opacity = "1";
-              }}
-              className="kalla-stagger h-auto flex-col gap-1.5 border-white/10 bg-white/[0.04] py-4 backdrop-blur-xl transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/60"
-              style={{ animationDelay: `${i * 0.04}s` }}
-            >
-              <Icon className="h-5 w-5 text-primary" />
-              <span className="text-sm font-medium">{label}</span>
-            </Button>
-          ))}
-
-        </div>
+        <FloatingDock items={dockItems} onSelect={setOpenDialog} />
 
         <ReconciliationCard reloadKey={ledgerReload} onAddIncome={() => setOpenDialog("wallet")} onChange={bump} />
 
         {noExpenses ? (
           <Card
-            className={`kalla-stagger ${GLASS} rounded-2xl`}
+            className={`kalla-stagger ${GLASS} relative overflow-hidden rounded-2xl`}
             onAnimationEnd={(e) => {
               e.currentTarget.style.animation = "none";
               e.currentTarget.style.opacity = "1";
             }}
           >
-            <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+            <GridPattern
+              width={24}
+              height={24}
+              className="[mask-image:radial-gradient(120%_100%_at_50%_0%,white,transparent)] fill-white/[0.04] stroke-white/[0.08]"
+            />
+            <CardContent className="relative z-10 flex flex-col items-center gap-4 py-12 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
                 <Wallet className="h-6 w-6 text-primary" />
               </div>
@@ -200,8 +199,13 @@ export default function Dashboard() {
         ) : (
           <>
             {currencyTotals.length > 0 && (
-              <Card className={`${GLASS} rounded-2xl`}>
-                <CardContent className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+              <Card className={`${GLASS} relative overflow-hidden rounded-2xl`}>
+                            <GridPattern
+                width={24}
+                height={24}
+                className="[mask-image:radial-gradient(120%_100%_at_50%_0%,white,transparent)] fill-white/[0.04] stroke-white/[0.08]"
+              />
+                <CardContent className="relative z-10 flex flex-wrap items-baseline gap-x-6 gap-y-2">
                   {currencyTotals.map(([cur, amt], i) => (
                     <div key={cur} className="flex items-baseline gap-1.5">
                       <span className={`font-semibold tabular-nums ${i === 0 ? "text-xl text-foreground" : "text-base text-muted-foreground"}`}>
@@ -226,8 +230,13 @@ export default function Dashboard() {
               <Charts expenses={expenses} baseCurrency={baseCurrency} />
             </Suspense>
 
-            <Card className={`${GLASS} overflow-hidden rounded-2xl p-0`}>
-              <div className="flex items-center justify-between gap-3 px-5 py-4">
+            <Card className={`${GLASS} relative overflow-hidden rounded-2xl p-0`}>
+              <GridPattern
+                width={24}
+                height={24}
+                className="[mask-image:radial-gradient(120%_100%_at_50%_0%,white,transparent)] fill-white/[0.04] stroke-white/[0.08]"
+              />
+              <div className="relative z-10 flex items-center justify-between gap-3 px-5 py-4">
                 <button onClick={() => setExpensesOpen((o) => !o)} className="flex flex-1 items-center gap-2 text-left">
                   <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expensesOpen ? "" : "-rotate-90"}`} />
                   <span className="font-medium">Expenses</span>
@@ -246,7 +255,7 @@ export default function Dashboard() {
                 </Button>
               </div>
               {expensesOpen && (
-                <div className="border-t border-white/5">
+                <div className="relative z-10 border-t border-white/5">
                   <ExpenseList
                     expenses={expenses}
                     loading={loading}
@@ -312,8 +321,13 @@ export default function Dashboard() {
       <Dialog open={openDialog === "filter"} onOpenChange={(o) => setOpenDialog(o ? "filter" : null)}>
         <DialogContent className="max-w-md border-0 bg-transparent p-0 shadow-none">
           <DialogTitle className="sr-only">Filter expenses</DialogTitle>
-          <Card className={`${GLASS} rounded-2xl`}>
-            <CardContent className="space-y-4">
+          <Card className={`${GLASS} relative overflow-hidden rounded-2xl`}>
+            <GridPattern
+              width={24}
+              height={24}
+              className="[mask-image:radial-gradient(120%_100%_at_50%_0%,white,transparent)] fill-white/[0.04] stroke-white/[0.08]"
+            />
+            <CardContent className="relative z-10 space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-medium">Filter</h2>
                 {hasFilter && (

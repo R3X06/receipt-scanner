@@ -4,6 +4,9 @@ import {
 } from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
 import { useState } from "react";
+import { LedgerGrid } from "@/components/ui/ledger-grid";
+import { GridPattern } from "@/components/ui/grid-pattern";
+
 
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 
@@ -56,8 +59,13 @@ function CategoryChart({ expenses, baseCurrency }) {
   const total = data.reduce((s, d) => s + d.value, 0);
 
   return (
-    <Card className={`${GLASS} rounded-2xl`}>
-      <CardContent className="space-y-1">
+    <Card className={`${GLASS} relative overflow-hidden rounded-2xl`}>
+      <GridPattern
+        width={24}
+        height={24}
+        className="[mask-image:radial-gradient(120%_100%_at_50%_0%,white,transparent)] fill-white/[0.04] stroke-white/[0.08]"
+      />
+      <CardContent className="relative z-10 space-y-1">
         <h2 className="text-base font-medium">Spending by category</h2>
         <p className="text-xs text-muted-foreground">Converted to {baseCurrency}</p>
 
@@ -138,8 +146,13 @@ function MonthlyChart({ expenses, baseCurrency }) {
   if (data.length === 0) return null;
 
   return (
-    <Card className={`${GLASS} rounded-2xl`}>
-      <CardContent className="space-y-1">
+    <Card className={`${GLASS} relative overflow-hidden rounded-2xl`}>
+      <GridPattern
+        width={24}
+        height={24}
+        className="[mask-image:radial-gradient(120%_100%_at_50%_0%,white,transparent)] fill-white/[0.04] stroke-white/[0.08]"
+      />
+      <CardContent className="relative z-10 space-y-1">
         <h2 className="text-base font-medium">Monthly totals</h2>
         <p className="text-xs text-muted-foreground">Converted to {baseCurrency}</p>
 

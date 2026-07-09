@@ -4,6 +4,7 @@ import { getInsights } from "./api";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { motion, AnimatePresence } from "motion/react";
 
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 
@@ -38,16 +39,23 @@ export default function Insights() {
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
-        {insights ? (
-          <div className="whitespace-pre-wrap rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm leading-relaxed">
-            {insights}
-          </div>
-        ) : (
-          !loading && !error && (
-            <p className="text-sm text-muted-foreground">
-              Tap Generate for AI observations about your spending patterns.
-            </p>
-          )
+        <AnimatePresence mode="wait">
+          {insights && (
+            <motion.div
+              key={insights}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+              className="whitespace-pre-wrap rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm leading-relaxed"
+            >
+              {insights}
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {!insights && !loading && !error && (
+          <p className="text-sm text-muted-foreground">
+            Tap Generate for AI observations about your spending patterns.
+          </p>
         )}
       </CardContent>
     </Card>
