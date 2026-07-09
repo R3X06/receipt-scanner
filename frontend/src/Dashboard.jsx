@@ -158,7 +158,6 @@ export default function Dashboard() {
         </div>
 
         <FloatingDock items={dockItems} onSelect={setOpenDialog} />
-
         <ReconciliationCard reloadKey={ledgerReload} onAddIncome={() => setOpenDialog("wallet")} onChange={bump} />
 
         {noExpenses ? (
