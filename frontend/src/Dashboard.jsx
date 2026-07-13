@@ -49,6 +49,7 @@ import DottedGlowBackground from "@/components/ui/DottedGlowBackground";
 import { LedgerGrid } from "@/components/ui/ledger-grid";
 import { GridPattern } from "@/components/ui/grid-pattern";
 import { FloatingDock } from "@/components/ui/floating-dock";
+import ScenarioSimulator from "./ScenarioSimulator";
 
 const GLASS = "border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-xl shadow-black/20";
 const DIALOG = "max-w-lg border-0 bg-transparent p-0 shadow-none";
@@ -63,6 +64,7 @@ export default function Dashboard() {
 
   const [openDialog, setOpenDialog] = useState(null);
   const [distData, setDistData] = useState(null);
+  const [simData, setSimData] = useState(null);
   const [expensesOpen, setExpensesOpen] = useState(true);
   const [ledgerReload, setLedgerReload] = useState(0);
 
@@ -300,11 +302,16 @@ export default function Dashboard() {
           reloadKey={ledgerReload}
           onChange={bump}
           onViewDistribution={(payload) => { setDistData(payload); setOpenDialog("distribution"); }}
+          onOpenSimulator={(payload) => { setSimData(payload); setOpenDialog("simulate"); }}
         />
       </ResponsiveDialog>
 
       <ResponsiveDialog open={openDialog === "distribution"} onOpenChange={(o) => setOpenDialog(o ? "distribution" : null)} title="Distribution" className={`${DIALOG} max-h-[88vh] overflow-y-auto glass-scroll`}>
         {distData && <AllocationReceipt {...distData} />}
+      </ResponsiveDialog>
+
+      <ResponsiveDialog open={openDialog === "simulate"} onOpenChange={(o) => setOpenDialog(o ? "simulate" : null)} title="Simulate" className={`${DIALOG} max-h-[88vh] overflow-y-auto glass-scroll`}>
+        {simData && <ScenarioSimulator {...simData} />}
       </ResponsiveDialog>
 
       <ResponsiveDialog open={openDialog === "statement"} onOpenChange={(o) => setOpenDialog(o ? "statement" : null)} title="Statement" className={DIALOG}>

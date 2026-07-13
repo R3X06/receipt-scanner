@@ -473,3 +473,14 @@ export async function deleteImport(token, id) {
   if (!res.ok) throw new Error(data.detail || "Failed to delete import");
   return data;
 }
+
+export async function simulateScenario(token, payload) {
+  const res = await fetch(`${API_URL}/scenario/simulate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Simulation failed");
+  return data;
+}

@@ -526,6 +526,152 @@ def goals_view(db, user, strategy=None):
     return {"savings_balance": sav_bal, "unallocated": res["unallocated"],
             "strategy": strat, "goals": out}
 
+# ---------------- scenario simulation (hypothetical, never persisted) ----------------
+
+def _category_monthly_avg(db, user):
+    """Average monthly spend per category, across every month that category has
+    activity - unlike essential_monthly_spend, this covers ALL categories
+    (essential, discretionary, or untagged), so a category_pct adjustment can
+    affect total spend regardless of the category's kind."""
+    rows = db.query(models.LedgerEntry).filter(
+        models.LedgerEntry.user_id == user.id,
+        models.LedgerEntry.to_account_id.is_(None),   # expenses
+    ).all()
+    by_cat_month = {}
+    for e in rows:
+        cat = e.category or "Uncategorized"
+        d = e.fx_date or e.date or ""
+        if len(d) < 7:
+            continue
+        key = (cat, d[:7])
+        by_cat_month[key] = by_cat_month.get(key, 0.0) + entry_base(e)
+    totals, months_seen = {}, {}
+    for (cat, month), amt in by_cat_month.items():
+        totals[cat] = totals.get(cat, 0.0) + amt
+        months_seen[cat] = months_seen.get(cat, 0) + 1
+    return {cat: round(totals[cat] / months_seen[cat], 2) for cat in totals}
+
+def _total_monthly_spend(db, user):
+    """Average monthly spend across ALL categories, using the same shared-month
+    denominator method as essential_monthly_spend (sum per calendar month across
+    categories, then divide by months with any activity) - so the unadjusted
+    baseline matches real numbers shown elsewhere in the app exactly."""
+    rows = db.query(models.LedgerEntry).filter(
+        models.LedgerEntry.user_id == user.id,
+        models.LedgerEntry.to_account_id.is_(None),   # expenses
+    ).all()
+    by_month = {}
+    for e in rows:
+        d = e.fx_date or e.date or ""
+        if len(d) >= 7:
+            by_month[d[:7]] = by_month.get(d[:7], 0.0) + entry_base(e)
+    return (sum(by_month.values()) / len(by_month)) if by_month else 0.0
+
+def simulate_scenario(db, user, *, months=12, adjustments=None, strategy=None):
+    """Read-only 'what if' projection - never writes to the ledger or savings.
+    Explicit assumption (also returned in the response, never silent): each
+    simulated month, the full surplus (adjusted income - adjusted total spend)
+    is treated as if deposited into savings, then run through the real
+    goal_allocations engine. This is an optimistic ceiling, not a prediction -
+    a shortfall month is clamped to 0 rather than drawing savings down.
+
+    adjustments: list of dicts, each one of:
+      {"type": "category_pct", "category_name": str, "pct": float}   # -20 = cut 20%
+      {"type": "income_delta", "amount": float}
+      {"type": "goal_coverage_months", "goal_id": str, "months": float}
+    """
+    adjustments = adjustments or []
+    kinds = {c.name: c.kind for c in db.query(models.Category).filter(
+        models.Category.user_id == user.id).all()}
+    category_avg = _category_monthly_avg(db, user)   # used only to size category_pct deltas
+    baseline_essential = essential_monthly_spend(db, user)
+    baseline_total = _total_monthly_spend(db, user)
+    income = monthly_income_avg(db, user)
+    coverage_overrides = {}
+    essential_delta = 0.0
+    total_delta = 0.0
+
+    for adj in adjustments:
+        kind = adj.get("type")
+        if kind == "category_pct":
+            cat = adj.get("category_name")
+            pct = adj.get("pct") or 0.0
+            if cat in category_avg:
+                delta = round(category_avg[cat] * (pct / 100.0), 2)   # negative = a cut
+                total_delta += delta
+                if kinds.get(cat) == "essential":
+                    essential_delta += delta
+        elif kind == "income_delta":
+            income = round(income + (adj.get("amount") or 0.0), 2)
+        elif kind == "goal_coverage_months":
+            gid = adj.get("goal_id")
+            if gid:
+                coverage_overrides[gid] = adj.get("months")
+
+    essential_spend = round(max(baseline_essential + essential_delta, 0.0), 2)
+    total_spend = round(max(baseline_total + total_delta, 0.0), 2)
+    monthly_surplus = max(round(income - total_spend, 2), 0.0)
+
+    _ensure_emergency(db, user)
+    sav = savings_account(db, user.id)
+    starting_balance = round(account_balances(db, user.id).get(sav.id, 0.0), 2) if sav else 0.0
+    goals = db.query(models.Goal).filter(
+        models.Goal.user_id == user.id, models.Goal.archived == False,  # noqa: E712
+    ).order_by(models.Goal.priority).all()
+    strat = strategy or _algo_strategy(user)
+
+    def derived_target(g):
+        if g.is_emergency:
+            cov = coverage_overrides.get(g.id, g.coverage_months or 6)
+            return round(cov * essential_spend, 2) if essential_spend else 0.0
+        return g.target_amount
+
+    gdicts = [{
+        "id": g.id, "name": g.name, "reserve": g.reserve,
+        "target_amount": derived_target(g), "deadline": g.deadline,
+        "priority": g.priority or 0, "is_emergency": bool(g.is_emergency),
+        "in_distribution": g.in_distribution is not False,
+    } for g in goals]
+
+    goal_reached_month = {g["id"]: None for g in gdicts}
+    savings_balance = starting_balance
+    timeline = []
+    for m in range(1, months + 1):
+        savings_balance = round(savings_balance + monthly_surplus, 2)
+        res = goal_allocations(savings_balance, gdicts, strat)
+        alloc = res["allocations"]
+        snapshot_goals = []
+        for g in gdicts:
+            a = round(alloc.get(g["id"], 0.0), 2)
+            tgt = g["target_amount"]
+            if tgt and tgt > 0 and a + 1e-6 >= tgt and goal_reached_month[g["id"]] is None:
+                goal_reached_month[g["id"]] = m
+            item = {"id": g["id"], "name": g["name"], "allocated": a, "target_amount": tgt}
+            if tgt and tgt > 0:
+                item["progress"] = round(min(a / tgt, 1.0), 4)
+                item["remaining"] = round(max(tgt - a, 0.0), 2)
+            snapshot_goals.append(item)
+        timeline.append({
+            "month": m, "savings_balance": savings_balance,
+            "unallocated": res["unallocated"], "goals": snapshot_goals,
+        })
+
+    return {
+        "assumptions": {
+            "monthly_surplus": monthly_surplus,
+            "adjusted_income": income,
+            "adjusted_total_spend": total_spend,
+            "adjusted_essential_spend": essential_spend,
+            "note": ("Assumes 100% of monthly surplus (income minus all spend) is "
+                     "deposited into savings every month - an optimistic ceiling, "
+                     "not a prediction of actual behavior. Shortfall months are "
+                     "clamped to 0 rather than drawing savings down."),
+        },
+        "strategy": strat,
+        "starting_savings_balance": starting_balance,
+        "timeline": timeline,
+        "goal_reached_month": goal_reached_month,
+    }
 
 # ---------------- generated monthly income (never user-entered) ----------------
 

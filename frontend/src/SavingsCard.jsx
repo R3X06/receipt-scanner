@@ -242,7 +242,7 @@ function EmergencyBlock({ em, fmt, busy, onConfigure }) {
   );
 }
 
-export default function SavingsCard({ reloadKey, onChange, onViewDistribution }) {
+export default function SavingsCard({ reloadKey, onChange, onViewDistribution, onOpenSimulator }) {
   const { token, user, setUser } = useAuth();
   const base = user?.primary_currency || "SGD";
   const fmt = fmtWith(base);
@@ -374,6 +374,14 @@ export default function SavingsCard({ reloadKey, onChange, onViewDistribution })
           className="w-full rounded-lg border border-dashed border-primary/40 bg-primary/[0.06] py-2.5 text-xs text-primary-enhanced hover:bg-primary/[0.12]"
         >
           View distribution
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onOpenSimulator?.({ goals, currency: base, strategy })}
+          className="w-full rounded-lg border border-dashed border-primary/40 bg-primary/[0.06] py-2.5 text-xs text-primary-enhanced hover:bg-primary/[0.12]"
+        >
+          Simulate
         </button>
 
         {/* goals (emergency is pinned above; these are the rest) */}

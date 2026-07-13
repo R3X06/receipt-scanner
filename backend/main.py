@@ -897,6 +897,33 @@ def reorder_goals(body: GoalReorderRequest, db: Session = Depends(get_db),
     db.commit()
     return ledger.goals_view(db, current_user)
 
+class ScenarioAdjustment(BaseModel):
+    type: str                          # "category_pct" | "income_delta" | "goal_coverage_months"
+    category_name: Optional[str] = None
+    pct: Optional[float] = None
+    amount: Optional[float] = None
+    goal_id: Optional[str] = None
+    months: Optional[float] = None
+
+
+class ScenarioSimulateRequest(BaseModel):
+    months: int = 12
+    adjustments: list[ScenarioAdjustment] = []
+    strategy: Optional[str] = None
+
+
+@app.post("/scenario/simulate")
+def scenario_simulate(body: ScenarioSimulateRequest, db: Session = Depends(get_db),
+                       current_user: models.User = Depends(auth.get_current_user)):
+    """Read-only projection - reuses the real allocation engine, writes nothing.
+    months is capped at 60 (5 years) to keep the loop bounded."""
+    months = max(1, min(body.months, 60))
+    return ledger.simulate_scenario(
+        db, current_user, months=months,
+        adjustments=[a.dict(exclude_none=True) for a in body.adjustments],
+        strategy=body.strategy,
+    )
+
 
 @app.post("/goals")
 def create_goal_config(body: GoalConfigRequest, db: Session = Depends(get_db),
