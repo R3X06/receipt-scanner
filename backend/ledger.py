@@ -17,6 +17,7 @@ from clock import utcnow
 import models
 import fx
 import providers
+import debuglib
 
 
 def entry_base(e):
@@ -382,7 +383,7 @@ def _spread(remainder, strategy, room_goals):
 
     return {k: round(v, 2) for k, v in extra.items()}, round(max(pool, 0.0), 2)
 
-
+@debuglib.traced
 def goal_allocations(savings_balance, goals, strategy="proportional"):
     """Two passes over the savings pool:
       1. Reserves first. Sum every goal's reserve; if savings covers it, each goal
@@ -415,8 +416,9 @@ def goal_allocations(savings_balance, goals, strategy="proportional"):
             take = round(min(left, g["reserve"]), 2)
             alloc[g["id"]] = take
             left = round(left - take, 2)
-        return {"allocations": {k: round(v, 2) for k, v in alloc.items()},
-                "unallocated": 0.0}
+        return debuglib.verify_allocation(savings, norm, {
+            "allocations": {k: round(v, 2) for k, v in alloc.items()},
+            "unallocated": 0.0})
 
     for g in norm:
         alloc[g["id"]] = g["reserve"]
@@ -438,8 +440,9 @@ def goal_allocations(savings_balance, goals, strategy="proportional"):
     for gid, v in extra.items():
         alloc[gid] = round(alloc[gid] + v, 2)
 
-    return {"allocations": {k: round(v, 2) for k, v in alloc.items()},
-            "unallocated": round(max(leftover, 0.0), 2)}
+    return debuglib.verify_allocation(savings, norm, {
+        "allocations": {k: round(v, 2) for k, v in alloc.items()},
+        "unallocated": round(max(leftover, 0.0), 2)})
 
 
 def _ensure_emergency(db, user):
@@ -567,6 +570,7 @@ def _total_monthly_spend(db, user):
             by_month[d[:7]] = by_month.get(d[:7], 0.0) + entry_base(e)
     return (sum(by_month.values()) / len(by_month)) if by_month else 0.0
 
+@debuglib.traced
 def simulate_scenario(db, user, *, months=12, adjustments=None, strategy=None):
     """Read-only 'what if' projection - never writes to the ledger or savings.
     Explicit assumption (also returned in the response, never silent): each
