@@ -28,11 +28,6 @@ This isn't a stylistic preference. It's the difference between an app that *show
 
 ## Screenshots
 
-<!-- Add screenshots to /docs/screenshots and update the paths below.
-     Suggested set: dashboard (desktop), floating dock hover state,
-     allocation engine / savings distribution, mobile responsive view,
-     the Statement receipt-print animation. -->
-
 | Dashboard | Allocation engine |
 |---|---|
 | ![Dashboard](docs/screenshots/dashboard.png) | ![Allocation](docs/screenshots/allocation.png) |
